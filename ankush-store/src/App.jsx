@@ -225,7 +225,11 @@ function AppContent() {
       <CustomerLoginModal />
 
       {/* Intelligent Jarvis-Style Canvas AI Assistant (Aura / Gen) */}
-      {isGenAiActive && <GenAIAssistant />}
+      {isGenAiActive && (
+        <ErrorBoundary>
+          <GenAIAssistant />
+        </ErrorBoundary>
+      )}
     </div>
   );
 }
@@ -233,8 +237,10 @@ function AppContent() {
 // Root Application with Unified Central Context
 export default function App() {
   return (
-    <StoreProvider>
-      <AppContent />
-    </StoreProvider>
+    <ErrorBoundary>
+      <StoreProvider>
+        <AppContent />
+      </StoreProvider>
+    </ErrorBoundary>
   );
 }

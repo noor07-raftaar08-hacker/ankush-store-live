@@ -1458,9 +1458,13 @@ export function StoreProvider({ children }) {
   const updateDailyDealsConfig = (newFields) => {
     setDailyDealsConfig(prev => {
       const next = { ...prev, ...newFields };
-      localStorage.setItem('ankush_daily_deals_config', JSON.stringify(next));
+      try { localStorage.setItem('ankush_daily_deals_config', JSON.stringify(next)); } catch (e) {}
       return next;
     });
+  };
+
+  const updateDailyDealCountdown = (hours, minutes) => {
+    updateDailyDealsConfig({ countdownHours: hours, countdownMinutes: minutes });
   };
 
   const toggleDailyDealProduct = (productId, discountPercent = 20) => {
@@ -1559,7 +1563,7 @@ export function StoreProvider({ children }) {
       storeBanners, updateStoreBanner, toggleStoreBanner,
       recommendedProducts, bestSellersProducts,
       flyingCartItem, triggerFlyToCart,
-      dailyDealsConfig, updateDailyDealCountdown, toggleDailyDealProduct, updateDailyDealDiscount,
+      dailyDealsConfig, updateDailyDealsConfig, updateDailyDealCountdown, toggleDailyDealProduct, updateDailyDealDiscount,
       isGenAiActive, toggleGenAi
     }}>
       {children}
