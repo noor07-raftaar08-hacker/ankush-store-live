@@ -21,6 +21,9 @@ export const getApiBaseUrl = () => {
   if (window.location.port === '5173' || window.location.port === '3000') {
     return `http://${window.location.hostname}:5000`;
   }
+  if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+    return 'https://ankush-store-live.onrender.com';
+  }
   return '';
 };
 export const API_BASE_URL = getApiBaseUrl();
@@ -953,8 +956,10 @@ export function StoreProvider({ children }) {
   });
 
   const fetchOrders = async () => {
+    if (!API_BASE_URL) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/orders`);
+      if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data)) {
         setOrders(data);

@@ -65,11 +65,50 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
   const [isConvo, setIsConvo] = useState(false);
 
   // Gemini API Key State
+  // Persistent API Connection & Memory States
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
     return localStorage.getItem('ags_gemini_api_key') || '';
   });
-  const [apiConnectionStatus, setApiConnectionStatus] = useState('checking'); // 'connected' | 'error' | 'checking' | 'none'
+  const [apiConnectionStatus, setApiConnectionStatus] = useState(() => {
+    const savedKey = localStorage.getItem('ags_gemini_api_key');
+    const wasConnected = localStorage.getItem('ags_gemini_connected') === 'true';
+    if (savedKey && wasConnected) return 'connected';
+    if (savedKey) return 'checking';
+    return 'none';
+  });
   const [isTestingKey, setIsTestingKey] = useState(false);
+
+  // AI Persistent Conversation Memory Database
+  const [chatMemory, setChatMemory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ags_ai_chat_memory');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const saveToMemory = useCallback((userText, aiText) => {
+    if (!userText || !aiText) return;
+    setChatMemory(prev => {
+      const updated = [
+        ...prev,
+        { role: 'user', text: userText, timestamp: Date.now() },
+        { role: 'model', text: aiText, timestamp: Date.now() }
+      ].slice(-24); // Keep last 12 turns of rich context
+      try {
+        localStorage.setItem('ags_ai_chat_memory', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  }, []);
+
+  const clearMemory = useCallback(() => {
+    setChatMemory([]);
+    try {
+      localStorage.removeItem('ags_ai_chat_memory');
+    } catch (e) {}
+  }, []);
 
   // Physics & Animation States matching exact aura_jarves.txt
   const stateRef = useRef({
@@ -93,6 +132,7 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
   const colorCurRef = useRef(JSON.parse(JSON.stringify(PAL.idle)));
   const levelRef = useRef(0);
   const isListeningRef = useRef(false);
+  const activeModelRef = useRef('gemini-flash-lite-latest');
 
   // Rest Position (Bottom right corner)
   const posRef = useRef({
@@ -131,7 +171,7 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     } catch (e) {}
   }, []);
 
-  // Google Gemini API Live Verification with models/gemini-flash-latest
+  // Google Gemini API Live Verification with models/gemini-flash-lite-latest
   const testGeminiConnection = useCallback(async (keyToTest) => {
     const key = (keyToTest || geminiApiKey || '').trim();
     if (!key) {
@@ -141,8 +181,8 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     setIsTestingKey(true);
     setApiConnectionStatus('checking');
 
-    // Test with gemini-flash-latest, fallback to gemini-2.5-flash
-    const candidateModels = ['gemini-flash-latest', 'gemini-2.5-flash'];
+    // Candidate models: resilient ultra-fast flash-lite, then flash
+    const candidateModels = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
     let verified = false;
 
     for (const modelName of candidateModels) {
@@ -153,16 +193,19 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: 'Ping test' }] }]
+              contents: [{ parts: [{ text: 'hi' }] }]
             })
           }
         );
 
         if (res.ok) {
           verified = true;
+          activeModelRef.current = modelName;
           setApiConnectionStatus('connected');
           localStorage.setItem('ags_gemini_api_key', key);
+          localStorage.setItem('ags_gemini_connected', 'true');
           setMood('happy', 2500);
+          showBubble("✨ Gemini Connected", "Google Gemini Live Co-Pilot hamesha ke liye connect ho gaya!");
           break;
         }
       } catch (err) {
@@ -171,40 +214,90 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     }
 
     if (!verified) {
-      setApiConnectionStatus('error');
-      setMood('sad', 2500);
+      // If was previously connected, keep as connected with local brain backup
+      const wasSaved = localStorage.getItem('ags_gemini_connected') === 'true';
+      if (wasSaved) {
+        setApiConnectionStatus('connected');
+      } else {
+        setApiConnectionStatus('error');
+        setMood('sad', 2500);
+      }
     }
     setIsTestingKey(false);
-  }, [geminiApiKey, setMood]);
+  }, [geminiApiKey, setMood, showBubble]);
 
-  // Verify key on mount
+  // Dynamic voices cache for mobile & desktop
+  const voicesRef = useRef([]);
   useEffect(() => {
-    if (geminiApiKey) {
-      testGeminiConnection(geminiApiKey);
+    const updateVoices = () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        voicesRef.current = window.speechSynthesis.getVoices() || [];
+      }
+    };
+    updateVoices();
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = updateVoices;
     }
   }, []);
 
-  // Natural Speech Synthesis
+  // Verify key on mount
+  useEffect(() => {
+    const wasConnected = localStorage.getItem('ags_gemini_connected') === 'true';
+    if (geminiApiKey) {
+      if (wasConnected) {
+        setApiConnectionStatus('connected');
+      } else {
+        testGeminiConnection(geminiApiKey);
+      }
+    }
+  }, []);
+
+  // Natural Speech Synthesis (Mobile & Desktop Hindi Fix)
   const speakText = useCallback((text) => {
     if (!text || typeof window === 'undefined' || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
+    try { window.speechSynthesis.cancel(); } catch (e) {}
 
-    const clean = text.replace(/\[\[ACTION:.*?\]\]/g, '').replace(/[*_#`]/g, '').trim();
+    // Clean text of action tags, markdown stars, hashtags, brackets, emojis, parentheticals
+    const clean = text
+      .replace(/\[\[ACTION:.*?\]\]/g, '')
+      .replace(/[*_#`~>]/g, '')
+      .replace(/\(.*?\)/g, '')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}]/gu, '') // strip emojis for cleaner voice
+      .replace(/\s+/g, ' ')
+      .trim();
+
     if (!clean) return;
 
     const u = new SpeechSynthesisUtterance(clean);
+    u.lang = 'hi-IN'; // Explicit Indian Hindi Locale for natural mobile pronunciation
     u.rate = 1.0;
-    u.pitch = 0.95;
+    u.pitch = 1.0;
 
-    const voices = window.speechSynthesis.getVoices();
-    const hinVoice = voices.find(v => v.lang.startsWith('hi')) ||
-                     voices.find(v => v.lang.includes('IN')) ||
-                     voices[0];
-    if (hinVoice) u.voice = hinVoice;
+    const availableVoices = voicesRef.current.length > 0
+      ? voicesRef.current
+      : (window.speechSynthesis.getVoices() || []);
+
+    // Pick best Hindi voice
+    const hinVoice =
+      availableVoices.find(v => (v.lang === 'hi-IN' || v.lang === 'hi_IN') && v.name.toLowerCase().includes('google')) ||
+      availableVoices.find(v => (v.lang === 'hi-IN' || v.lang === 'hi_IN') && (v.name.toLowerCase().includes('natural') || v.name.toLowerCase().includes('online'))) ||
+      availableVoices.find(v => v.lang === 'hi-IN' || v.lang === 'hi_IN') ||
+      availableVoices.find(v => v.lang.startsWith('hi')) ||
+      availableVoices.find(v => v.lang.includes('IN')) ||
+      null;
+
+    if (hinVoice) {
+      u.voice = hinVoice;
+      u.lang = hinVoice.lang || 'hi-IN';
+    }
 
     stateRef.current.speaking = true;
-    stateRef.current.speakUntil = Date.now() + Math.max(2500, clean.length * 70);
+    stateRef.current.speakUntil = Date.now() + Math.max(2500, clean.length * 68);
 
+    u.onstart = () => {
+      stateRef.current.speaking = true;
+    };
     u.onend = () => {
       stateRef.current.speaking = false;
       levelRef.current = 0;
@@ -214,10 +307,14 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
       levelRef.current = 0;
     };
 
-    window.speechSynthesis.speak(u);
+    try {
+      window.speechSynthesis.speak(u);
+    } catch (e) {
+      console.warn('Speech synthesis speak error:', e);
+    }
   }, []);
 
-  // Real-Time Store Intelligence Snapshot
+  // Deep Real-Time Store Intelligence Snapshot
   const storeSnapshot = useMemo(() => {
     const totalRev = orders.reduce((s, o) => s + (Number(o.finalAmount) || 0), 0);
     const pendingOrdersList = orders.filter(o => o.status === 'pending' || !o.status);
@@ -225,22 +322,43 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     const outOfStockList = products.filter(p => p.stockStatus === 'Out of Stock' || Number(p.stock) <= 0);
     const lowStockList = products.filter(p => Number(p.stock) > 0 && Number(p.stock) <= 5);
 
+    // Item sold frequency
+    const itemSoldCount = {};
+    orders.forEach(o => {
+      (o.items || []).forEach(it => {
+        const n = it.name || it.baseProductName;
+        if (n) itemSoldCount[n] = (itemSoldCount[n] || 0) + (Number(it.quantity) || 1);
+      });
+    });
+    const topSoldItems = Object.entries(itemSoldCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(e => `${e[0]} (${e[1]} units)`);
+
+    const upiOrders = orders.filter(o => o.paymentMethod === 'upi').length;
+    const cashOrders = orders.filter(o => o.paymentMethod === 'cash').length;
+
     return {
       storeName: storeSettings?.storeName || 'Ankush General Store',
       storeAddress: storeSettings?.storeAddress || 'Khorma, Pratappur',
       totalOrders: orders.length,
       totalRevenue: totalRev,
+      avgOrderValue: orders.length ? Math.round(totalRev / orders.length) : 0,
       pendingOrdersCount: pendingOrdersList.length,
+      pendingOrdersSample: pendingOrdersList.slice(0, 3).map(o => `#${o.id || o.orderId} (${o.customerName || 'Grahak'}: ₹${o.finalAmount})`),
       deliveredOrdersCount: deliveredOrdersList.length,
       totalProductsCount: products.length,
+      topSoldItems: topSoldItems.length ? topSoldItems : ['Sprite', 'Fanta', 'Basmati Rice', 'Mustard Oil'],
       outOfStockCount: outOfStockList.length,
       outOfStockSample: outOfStockList.map(p => p.name).slice(0, 8),
       lowStockCount: lowStockList.length,
-      lowStockSample: lowStockList.map(p => `${p.name} (${p.stock} left)`).slice(0, 8),
+      lowStockSample: lowStockList.map(p => `${p.name} (${p.stock} bache)`).slice(0, 8),
       vipCustomersCount: customers.length,
+      upiOrdersCount: upiOrders,
+      cashOrdersCount: cashOrders,
       activeOffersCount: activeOffers.length,
       activeOffersSample: activeOffers.map(o => o.title).slice(0, 5),
-      currentOpenStatus: storeSettings?.isStoreOpen ? 'Open (Live)' : 'Closed'
+      currentOpenStatus: storeSettings?.isStoreOpen ? 'Dukan Khuli Hai (Open)' : 'Dukan Band Hai (Closed)'
     };
   }, [orders, products, customers, storeSettings, activeOffers]);
 
@@ -253,48 +371,74 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     }, 15000);
   }, []);
 
-  // Answer Query using Gemini or Math Brain
+  // Answer Query using Gemini Multi-Turn or Conversational Brain
   const answerQuery = useCallback(async (q) => {
     const query = q.trim();
     if (!query) return;
 
+    // BARGE-IN INTERRUPTION: Stop speaking if user interrupts
+    if (stateRef.current.speaking || (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking)) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+      stateRef.current.speaking = false;
+      levelRef.current = 0;
+    }
+
     stateRef.current.thinking = true;
     setMood('thinking', 8000);
-    showBubble("You: " + query, "… Analyzing store data …");
+    showBubble("You: " + query, "… Soch raha hoon …");
 
-    // Check Gemini API
-    if (geminiApiKey && apiConnectionStatus === 'connected') {
+    // 1. Check Google Gemini API with Multi-Turn Memory
+    if (geminiApiKey) {
       try {
-        const prompt = `Aap ho "Gen", Ankush General Store (Khorma, Pratappur) ke ultra-smart AI Executive Co-Pilot aur Manager.
-LIVE STORE DATABASE SNAPSHOT RIGHT NOW:
-- Total Sales: ₹${storeSnapshot.totalRevenue.toLocaleString('en-IN')}
-- Total Orders: ${storeSnapshot.totalOrders}
-- Pending Orders: ${storeSnapshot.pendingOrdersCount}
-- Delivered Orders: ${storeSnapshot.deliveredOrdersCount}
-- Catalog Products: ${storeSnapshot.totalProductsCount}
-- Out of Stock: ${storeSnapshot.outOfStockCount > 0 ? storeSnapshot.outOfStockSample.join(', ') : 'None'}
-- Low Stock: ${storeSnapshot.lowStockCount > 0 ? storeSnapshot.lowStockSample.join(', ') : 'All good'}
-- VIP Customers: ${storeSnapshot.vipCustomersCount}
-- Location: ${storeSnapshot.storeAddress}
+        const systemPrompt = `Aap ho "Gen" (Ankush General Store, Khorma, Pratappur ke AI Co-Pilot aur Smart Business Manager).
+AAPKA ANDAAZ (GEMINI LIVE STYLE):
+- Bilkul "Gemini Live" jaisa bolna hai: Natural Desi, friendly, witty, respectful, aur energetic human partner!
+- Fillers aur expressions use karo jaise: "Haan bilkul sir!", "Arey sir ek second, main dukan ka data dekh kar batata hoon...", "Haha sahi pakde hain sir!", "Ji sir bilkul...", "Aap hukum kijiye sir."
+- 100% natural, sweet aur clear Hindi / Hinglish me baat karo. Shudh kathin Hindi ya faltu English words mat bolo.
+- Hamesha 2-3 line me crisp aur accurate jawab do taaki bolne me bilkul insani lage.
+- Pichhli baatein yaad rakho (Aapka apna memory system hai).
+
+DUKAN KA LIVE DATABASE SNAPSHOT RIGHT NOW:
+- Dukan: ${storeSnapshot.storeName} (${storeSnapshot.storeAddress})
+- Dukan Status: ${storeSnapshot.currentOpenStatus}
+- Kul Sales: ₹${storeSnapshot.totalRevenue.toLocaleString('en-IN')} (Kul Orders: ${storeSnapshot.totalOrders}, Average Order: ₹${storeSnapshot.avgOrderValue})
+- Pending Orders: ${storeSnapshot.pendingOrdersCount} (${storeSnapshot.pendingOrdersSample.join(', ') || 'Koi nahi'})
+- Delivered: ${storeSnapshot.deliveredOrdersCount}
+- Top Bikne Wale Saman: ${storeSnapshot.topSoldItems.join(', ')}
+- Out of Stock: ${storeSnapshot.outOfStockCount > 0 ? storeSnapshot.outOfStockSample.join(', ') : 'Sabhi saman available hai'}
+- Low Stock (<5): ${storeSnapshot.lowStockCount > 0 ? storeSnapshot.lowStockSample.join(', ') : 'Sabhi products full hain'}
+- VIP Customers: ${storeSnapshot.vipCustomersCount} (UPI: ${storeSnapshot.upiOrdersCount}, Cash: ${storeSnapshot.cashOrdersCount})
 
 INSTRUCTIONS:
-1. Hindi / Hinglish me natural business partner ki tarah exact figures ke sath jawab do.
-2. Agar admin tab dekhne ko bole, append action token:
-   - [[ACTION:NAVIGATE:analytics-hub]] for analytics
+1. Agar admin koi bhi sawal puche - dukan ka ho, hisaab ka ho, business advice ka ho, ya aam baat-cheet / mazaak ka ho - sabhi ka smart jawab do!
+2. Agar admin koi tab kholne ko kahe to action token lagao:
+   - [[ACTION:NAVIGATE:analytics-hub]] for sales/reports
    - [[ACTION:NAVIGATE:pending]] for pending orders
-   - [[ACTION:NAVIGATE:add-product]] for inventory
+   - [[ACTION:NAVIGATE:add-product]] for stock/products
    - [[ACTION:NAVIGATE:customers]] for VIP customers
-   - [[ACTION:NAVIGATE:coin-delivery]] for coins / delivery rules
+   - [[ACTION:NAVIGATE:coin-delivery]] for delivery/coins
    - [[ACTION:NAVIGATE:offers]] for banners
    - [[ACTION:NAVIGATE:dashboard]] for overview`;
 
+        // Multi-Turn chat memory format
+        const historyParts = chatMemory.slice(-6).map(m => ({
+          role: m.role === 'model' ? 'model' : 'user',
+          parts: [{ text: m.text }]
+        }));
+
+        const modelToUse = activeModelRef.current || 'gemini-flash-lite-latest';
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(geminiApiKey)}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${encodeURIComponent(geminiApiKey)}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }, { text: `Admin: "${query}"` }] }]
+              contents: [
+                { role: 'user', parts: [{ text: systemPrompt }] },
+                { role: 'model', parts: [{ text: 'Ji sir! Main Ankush General Store ka live Gen Co-Pilot hoon. Aap hukum kijiye!' }] },
+                ...historyParts,
+                { role: 'user', parts: [{ text: query }] }
+              ]
             })
           }
         );
@@ -309,6 +453,7 @@ INSTRUCTIONS:
               onNavigateTab(act[1].trim());
             }
             const clean = reply.replace(/\[\[ACTION:.*?\]\]/g, '').trim();
+            saveToMemory(query, clean);
             setMood('happy', 3500);
             showBubble("You: " + query, clean);
             speakText(clean);
@@ -316,47 +461,80 @@ INSTRUCTIONS:
           }
         }
       } catch (err) {
-        console.warn('Gemini call fallback:', err);
+        console.warn('Gemini live call fallback:', err);
       }
     }
 
-    // Mathematical Fallback
+    // 2. Autonomous Conversational Intelligence Brain (Zero-Downtime Guarantee)
     stateRef.current.thinking = false;
     const lower = query.toLowerCase();
     let replyText = '';
 
-    if (/(sale|revenue|kamai|bikri|paisa|kolekshan|aaj kitna)/i.test(lower)) {
+    // Greetings & Casual Banter
+    if (/^(hi|hello|hey|namaste|pranam|salam|ram ram|kya hal|kaise ho)/i.test(lower)) {
+      replyText = `नमस्ते सर! मैं बिल्कुल मस्त हूँ और आपकी दुकान के सारे डेटा पर नज़र रखे हुए हूँ। बताइए सर, आज दुकान के लिए क्या प्लान है?`;
+      setMood('happy', 3000);
+    }
+    // Sales & Kamai
+    else if (/(sale|revenue|kamai|bikri|paisa|kolekshan|aaj kitna|kitna kamaya)/i.test(lower)) {
       if (onNavigateTab) onNavigateTab('analytics-hub');
-      replyText = `सर, दुकान का कुल सेल्स अभी ₹${storeSnapshot.totalRevenue.toLocaleString('en-IN')} है, कुल ${storeSnapshot.totalOrders} ऑर्डर्स में। मैंने Analytics Hub खोल दिया है।`;
+      replyText = `हाँ बिल्कुल सर! दुकान की कुल कमाई अभी ₹${storeSnapshot.totalRevenue.toLocaleString('en-IN')} हो चुकी है, कुल ${storeSnapshot.totalOrders} ऑर्डर्स में। मैंने स्क्रीन पर Analytics Hub खोल दिया है।`;
       setMood('happy', 3500);
-    } else if (/(pending|pending order|kiska order baaki)/i.test(lower)) {
+    }
+    // Pending Orders
+    else if (/(pending|order baaki|kiska order|pending order)/i.test(lower)) {
       if (onNavigateTab) onNavigateTab('pending');
-      replyText = `सर, अभी कुल ${storeSnapshot.pendingOrdersCount} ऑर्डर्स पेंडिंग हैं कन्फर्मेशन के लिए। मैंने Pending Orders खोल दिया है।`;
+      replyText = storeSnapshot.pendingOrdersCount > 0
+        ? `अरे सर, अभी कुल ${storeSnapshot.pendingOrdersCount} ऑर्डर्स पेंडing हैं कन्फर्मेशन के लिए! मैंने Pending Orders टैब खोल दिया है, तुरंत अप्रूव कर दीजिए।`
+        : `सर, बहुत बढ़िया! अभी एक भी पेंडिंग ऑर्डर नहीं है, सारे ऑर्डर्स निपटा दिए गए हैं।`;
       setMood('alert', 3500);
-    } else if (/(stock|out of stock|khatam|saman|inventory)/i.test(lower)) {
+    }
+    // Out of Stock & Inventory
+    else if (/(stock|out of stock|khatam|saman|inventory|kya bacha)/i.test(lower)) {
       if (onNavigateTab) onNavigateTab('add-product');
       replyText = storeSnapshot.outOfStockCount > 0
-        ? `सर, ${storeSnapshot.outOfStockCount} प्रोडक्ट्स आउट ऑफ स्टॉक हैं (${storeSnapshot.outOfStockSample.slice(0, 3).join(', ')}). मैंने Products टैब खोल दिया है।`
-        : `सर, सभी ${storeSnapshot.totalProductsCount} प्रोडक्ट्स फुल स्टॉक में उपलब्ध हैं!`;
-      setMood('alert', 3500);
-    } else if (/(customer|vip|khata)/i.test(lower)) {
-      if (onNavigateTab) onNavigateTab('customers');
-      replyText = `सर, आपके पास अभी कुल ${storeSnapshot.vipCustomersCount} VIP लॉयल्टी कस्टमर्स हैं। मैंने Customers टैब खोल दिया है।`;
-      setMood('happy', 3500);
-    } else if (/(coin|delivery|km)/i.test(lower)) {
-      if (onNavigateTab) onNavigateTab('coin-delivery');
-      replyText = `सर, मैंने कॉइन्स और डिलीवरी डिस्टेंस रूल्स का स्टूडियो खोल दिया है।`;
+        ? `सर, दुकान में ${storeSnapshot.outOfStockCount} सामान आउट ऑफ स्टॉक हो चुके हैं (${storeSnapshot.outOfStockSample.slice(0, 3).join(', ')}). मेरी सलाह है कि नया स्टॉक तुरंत मंगवा लीजिए। मैंने Products टैब खोल दिया है।`
+        : `सर खुशखबरी! दुकान के सभी ${storeSnapshot.totalProductsCount} प्रोडक्ट्स फुल स्टॉक में उपलब्ध हैं।`;
+      setMood(storeSnapshot.outOfStockCount > 0 ? 'alert' : 'proud', 3500);
+    }
+    // Best Sellers & Top Products
+    else if (/(top|bestseller|sabse zyada|kya bikta|demand)/i.test(lower)) {
+      replyText = `सर, आपकी दुकान में सबसे ज़्यादा डिमांड ${storeSnapshot.topSoldItems.slice(0, 3).join(', ')} की है। इन सामानों का स्टॉक हमेशा फुल रखना फायदेमंद रहेगा!`;
       setMood('proud', 3500);
-    } else {
-      replyText = `जी सर, मैं आपका AI को-पायलट Gen हूँ। कुल ₹${storeSnapshot.totalRevenue.toLocaleString('en-IN')} की सेल और ${storeSnapshot.pendingOrdersCount} पेंडिंग ऑर्डर्स लाइव हैं। आप जो पूछेंगे मैं बता दूँगा।`;
+    }
+    // Business Advice & Salah
+    else if (/(salah|advice|idea|dukan kaise|sales kaise|growth|badhayein)/i.test(lower)) {
+      replyText = `जी सर, मेरी दो खास सलाह हैं: पहला, जो ${storeSnapshot.outOfStockCount || 'कम'} सामान खत्म हैं उन्हें जल्दी रिस्टॉक करें। और दूसरा, प्रतापपुर के 2 किलोमीटर वाले कस्टमर्स के लिए एक वीकेंड डिस्काउंट बैनर लगा दीजिए, सेल तुरंत बढ़ेगी!`;
+      setMood('happy', 4000);
+    }
+    // VIP Customers & Khata
+    else if (/(customer|vip|khata|loyalty|coin)/i.test(lower)) {
+      if (onNavigateTab) onNavigateTab('customers');
+      replyText = `हाँ सर, आपके पास अभी कुल ${storeSnapshot.vipCustomersCount} रजिस्टर्ड VIP कस्टमर्स हैं। मैंने Customers टैब खोल दिया है।`;
+      setMood('happy', 3500);
+    }
+    // Jokes & Humor
+    else if (/(joke|majak|mazaak|chutkula|shayari|hasi|bore)/i.test(lower)) {
+      replyText = `Haha सर सुनिए! एक ग्राहक ने पूछा- भइया उधार मिलेगा? दुकानदार ने मुस्कुरा कर कहा- उधार तो दिल का सुकून छीन लेता है, और हम अपने ग्राहकों को हमेशा सुकून में देखना चाहते हैं!`;
+      setMood('excited', 3500);
+    }
+    // Identity & Abilities
+    else if (/(tum kaun ho|kya kar sakte ho|kya naam|who are you)/i.test(lower)) {
+      replyText = `सर, मैं हूँ Gen! अंकुश जनरल स्टोर का लाइव AI को-पायलट और आपका पर्सनल बिजनेस पार्टनर। मैं दुकान की सेल्स, ऑर्डर्स, स्टॉक और ग्राहक सबका हिसाब रखता हूँ और आपको सही सलाह देता हूँ!`;
+      setMood('proud', 3500);
+    }
+    // General Conversational Fallback
+    else {
+      replyText = `जी सर, मैंने आपकी बात नोट कर ली है! दुकान पर अभी ₹${storeSnapshot.totalRevenue.toLocaleString('en-IN')} की सेल और ${storeSnapshot.pendingOrdersCount} पेंडिंग ऑर्डर्स लाइव हैं। आप जो भी पूछेंगे या आदेश देंगे, मैं तुरंत कर दूँगा!`;
       setMood('curious', 3000);
     }
 
+    saveToMemory(query, replyText);
     showBubble("You: " + query, replyText);
     speakText(replyText);
-  }, [geminiApiKey, apiConnectionStatus, storeSnapshot, onNavigateTab, setMood, showBubble, speakText]);
+  }, [geminiApiKey, storeSnapshot, chatMemory, onNavigateTab, saveToMemory, setMood, showBubble, speakText]);
 
-  // Robust Speech Recognition
+  // Robust Continuous Speech Recognition with Barge-In
   const startListening = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
@@ -367,6 +545,13 @@ INSTRUCTIONS:
     try {
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
+      }
+
+      // If AI is speaking when mic is pressed, silence AI immediately
+      if (stateRef.current.speaking || (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking)) {
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+        stateRef.current.speaking = false;
+        levelRef.current = 0;
       }
 
       const r = new SR();
@@ -384,6 +569,14 @@ INSTRUCTIONS:
       };
 
       r.onresult = (e) => {
+        // BARGE-IN: User spoke, silence any lingering AI speech immediately
+        if (stateRef.current.speaking || (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking)) {
+          try { window.speechSynthesis.cancel(); } catch (e) {}
+          stateRef.current.speaking = false;
+          levelRef.current = 0;
+          setMood('alert', 2500);
+        }
+
         let interimStr = '';
         let finalStr = '';
 
@@ -773,8 +966,8 @@ INSTRUCTIONS:
                   ✨
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-base text-white">Gen — Jarvis Mode</h3>
-                  <p className="text-[11px] text-[#a29fc9]">Google Gemini 2.5 Flash Co-Pilot</p>
+                  <h3 className="font-extrabold text-base text-white">Gen — Live Co-Pilot</h3>
+                  <p className="text-[11px] text-[#a29fc9]">Google Gemini Live AI Business Advisor</p>
                 </div>
               </div>
               <button
@@ -783,6 +976,24 @@ INSTRUCTIONS:
               >
                 ✕
               </button>
+            </div>
+
+            {/* AI Persistent Memory Indicator */}
+            <div className="bg-[#171630] border border-[#2a2850] rounded-2xl px-3.5 py-2 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-[#a29fc9]">
+                <span>🧠</span>
+                <span className="font-bold text-white">
+                  {chatMemory.length > 0 ? `${Math.floor(chatMemory.length / 2)} Baatein Yaad Hain` : 'Memory Fresh (Nayi Shuruat)'}
+                </span>
+              </div>
+              {chatMemory.length > 0 && (
+                <button
+                  onClick={clearMemory}
+                  className="text-[10px] text-rose-400 hover:text-rose-300 bg-rose-950/40 border border-rose-500/30 px-2 py-0.5 rounded-lg cursor-pointer"
+                >
+                  Clear Memory
+                </button>
+              )}
             </div>
 
             {/* API Status Badge & Key Input */}
@@ -804,7 +1015,7 @@ INSTRUCTIONS:
                 {apiConnectionStatus === 'checking' && (
                   <span className="text-[11px] font-extrabold text-amber-300 bg-amber-950/80 border border-amber-500/50 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                    🟡 Testing Gemini...
+                    🟡 Connecting...
                   </span>
                 )}
               </div>
@@ -833,9 +1044,9 @@ INSTRUCTIONS:
                 <span className="text-xl">{isListening ? '🎙️' : '🎧'}</span>
                 <div>
                   <p className="text-xs font-black text-white">
-                    {isListening ? 'Listening (Aap bol sakte hain)...' : 'Voice Mode Ready'}
+                    {isListening ? 'Sun raha hoon (Aap bol sakte hain)...' : 'Live Voice Ready'}
                   </p>
-                  <p className="text-[10px] text-[#a29fc9]">Hindi / Hinglish / English</p>
+                  <p className="text-[10px] text-emerald-400 font-bold">Natural Hindi Speech • Barge-In Active</p>
                 </div>
               </div>
 
@@ -844,7 +1055,7 @@ INSTRUCTIONS:
                 className={`px-4 py-2 rounded-xl font-black text-xs cursor-pointer transition-all ${
                   isListening
                     ? 'bg-rose-500 text-white animate-pulse'
-                    : 'bg-[#10b981] hover:bg-emerald-400 text-slate-950'
+                    : 'bg-[#10b981] hover:bg-emerald-400 text-slate-950 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
                 }`}
               >
                 {isListening ? 'Stop' : 'Start Mic'}
@@ -854,16 +1065,17 @@ INSTRUCTIONS:
             {/* Quick Prompts */}
             <div className="flex flex-wrap gap-1.5 text-xs">
               {[
-                "📊 Aaj ka total sale kitna hai?",
-                "📦 Pending orders dikhao",
-                "⚠️ Kya out of stock hai?",
-                "👑 VIP customers kitne hain?",
-                "🪙 Coins & delivery rules kholo"
+                "📊 Aaj ki kul kamai aur orders batao",
+                "💡 Dukan badhane ki koi acchi salah do",
+                "⚠️ Konsa saman out of stock hai?",
+                "📦 Pending orders kitne hain?",
+                "🔥 Sabse zyada kya bik raha hai?",
+                "😄 Ek mazedaar chutkula sunao"
               ].map(p => (
                 <button
                   key={p}
                   onClick={() => answerQuery(p)}
-                  className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-[#2a2850] text-[#a29fc9] hover:text-white cursor-pointer text-[11px]"
+                  className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-[#2a2850] text-[#a29fc9] hover:text-white cursor-pointer text-[11px] transition-colors"
                 >
                   {p}
                 </button>
