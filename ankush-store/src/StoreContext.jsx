@@ -414,7 +414,16 @@ export const StoreContext = createContext();
 export const useStore = () => useContext(StoreContext);
 
 export function StoreProvider({ children }) {
-  const [currentView, setCurrentView] = useState('home'); // 'home' | 'about' | 'account' | 'admin'
+  const [currentView, setCurrentViewRaw] = useState(() => {
+    return localStorage.getItem('ankush_current_view') || 'home';
+  });
+  const setCurrentView = useCallback((view) => {
+    setCurrentViewRaw(view);
+    try {
+      localStorage.setItem('ankush_current_view', view);
+    } catch (e) {}
+  }, []);
+
   const [isAdminAuth, setIsAdminAuth] = useState(() => localStorage.getItem('ankush_admin_auth') === 'true');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalInitialTab, setLoginModalInitialTab] = useState('customer');

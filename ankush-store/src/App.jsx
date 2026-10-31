@@ -122,7 +122,7 @@ function AdminLoginView({ onLoginSuccess, onBack }) {
   );
 }
 
-// Resilient Error Boundary to prevent any White Screen
+// Resilient Error Boundary to prevent any White Screen & show exact recovery
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -142,21 +142,40 @@ class ErrorBoundary extends React.Component {
             ⚠️
           </div>
           <h2 className="text-xl font-bold mb-2">Admin Dashboard Syncing</h2>
-          <p className="text-xs text-slate-400 max-w-md mb-6 leading-relaxed">
-            Dukan ka database sync ho raha hai. Niche button daba kar fresh session reload karein:
+          <p className="text-xs text-slate-400 max-w-md mb-4 leading-relaxed">
+            Dukan ka session sync ho raha hai. Niche button daba kar direct open karein:
           </p>
-          <button
-            onClick={() => {
-              try {
-                localStorage.removeItem('ankush_orders');
-                localStorage.removeItem('ankush_customers');
-              } catch (e) {}
-              window.location.reload();
-            }}
-            className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer"
-          >
-            🔄 Sync & Reload Dashboard
-          </button>
+
+          {this.state.error && (
+            <div className="bg-red-950/70 border border-red-500/40 text-red-300 text-[11px] p-3 rounded-xl mb-6 max-w-lg text-left font-mono break-all">
+              <strong>Error:</strong> {this.state.error?.message || String(this.state.error)}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3 justify-center">
+            <button
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+              }}
+              className="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs rounded-xl cursor-pointer shadow-lg shadow-violet-600/30"
+            >
+              🚀 Open Dashboard Now
+            </button>
+            <button
+              onClick={() => {
+                try {
+                  localStorage.removeItem('ankush_orders');
+                  localStorage.removeItem('ankush_customers');
+                  localStorage.setItem('ankush_admin_auth', 'true');
+                  localStorage.setItem('ankush_current_view', 'admin');
+                } catch (e) {}
+                window.location.reload();
+              }}
+              className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer"
+            >
+              🔄 Sync & Reload Dashboard
+            </button>
+          </div>
         </div>
       );
     }

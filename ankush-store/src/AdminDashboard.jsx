@@ -160,6 +160,33 @@ export const DASHBOARD_THEMES = [
   }
 ];
 
+class TabErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 rounded-3xl bg-slate-900/80 border border-amber-500/30 text-center text-white space-y-3 backdrop-blur-xl">
+          <p className="text-sm font-bold text-amber-300">Tab Synchronization</p>
+          <p className="text-xs text-rose-300 font-mono">{this.state.error?.message || "Refreshing"}</p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 rounded-xl font-bold text-xs cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function AdminDashboard() {
   const {
     setCurrentView,
@@ -621,12 +648,14 @@ export default function AdminDashboard() {
         =================================================================== */}
         <main className="space-y-6">
           {activeTab === 'dashboard' && (
-            <OverviewTab
-              onNavigateTab={(tabId) => setActiveTab(tabId)}
-              onInspectOrder={(ord) => setInspectedOrder(ord)}
-              onToast={triggerToast}
-              activeChartColors={[activeThemeObj.c1, activeThemeObj.c2, activeThemeObj.c3, activeThemeObj.c4, activeThemeObj.c5, activeThemeObj.c6]}
-            />
+            <TabErrorBoundary>
+              <OverviewTab
+                onNavigateTab={(tabId) => setActiveTab(tabId)}
+                onInspectOrder={(ord) => setInspectedOrder(ord)}
+                onToast={triggerToast}
+                activeChartColors={[activeThemeObj.c1, activeThemeObj.c2, activeThemeObj.c3, activeThemeObj.c4, activeThemeObj.c5, activeThemeObj.c6]}
+              />
+            </TabErrorBoundary>
           )}
 
           {activeTab === 'analytics-hub' && (
@@ -752,13 +781,15 @@ export default function AdminDashboard() {
 
       {/* Intelligent Jarvis-Style Canvas AI Assistant (Gen) */}
       {isGenAiActive && (
-        <GenAIAssistant
-          activeTab={activeTab}
-          onNavigateTab={(tab) => {
-            setActiveTab(tab);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-        />
+        <TabErrorBoundary>
+          <GenAIAssistant
+            activeTab={activeTab}
+            onNavigateTab={(tab) => {
+              setActiveTab(tab);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        </TabErrorBoundary>
       )}
     </div>
   );
