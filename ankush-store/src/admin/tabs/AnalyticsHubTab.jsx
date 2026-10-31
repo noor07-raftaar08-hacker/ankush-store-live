@@ -125,10 +125,12 @@ export default function AnalyticsHubTab({ onOpenDesignSystem, onToast }) {
   const [barHovIdx, setBarHovIdx] = useState(null);
   const [barTipPos, setBarTipPos] = useState({ x: 0, y: 0, visible: false, dayIdx: null });
 
+  const safeOrders = useMemo(() => Array.isArray(orders) ? orders : [], [orders]);
+
   // Unique trigger key for fluid water-flow animation on ANY selection change
   const animKey = useMemo(() => {
-    return `${metricMode}-${rangeMode}-${selectedCategoryIdx !== null ? selectedCategoryIdx : 'all'}-${compareLastYear}-${customFromDate}-${customToDate}-${orders.length}`;
-  }, [metricMode, rangeMode, selectedCategoryIdx, compareLastYear, customFromDate, customToDate, orders.length]);
+    return `${metricMode}-${rangeMode}-${selectedCategoryIdx !== null ? selectedCategoryIdx : 'all'}-${compareLastYear}-${customFromDate}-${customToDate}-${safeOrders.length}`;
+  }, [metricMode, rangeMode, selectedCategoryIdx, compareLastYear, customFromDate, customToDate, safeOrders.length]);
 
   // Fluid Progress Counter (0 to 1 over 850ms) with Ease-Out
   const [animProgress, setAnimProgress] = useState(1);
@@ -158,16 +160,17 @@ export default function AnalyticsHubTab({ onOpenDesignSystem, onToast }) {
 
   // 1. Raw Orders Source - 100% Real Store Orders Directly from StoreContext
   const rawOrders = useMemo(() => {
-    return orders.map(o => {
+    return safeOrders.map(o => {
+      if (!o) return null;
       const d = o.orderDate ? new Date(o.orderDate) : new Date();
       const dStr = d.toISOString().slice(0, 10);
       const hour = d.getHours();
       const lines = (o.items && o.items.length > 0)
         ? o.items.map(it => {
-            const matchedProd = products.find(p => p.id === it.productId || p.id === it.id);
+            const matchedProd = (products || []).find(p => p && (p.id === it.productId || p.id === it.id));
             return {
-              cat: it.category || matchedProd?.category || 'Groceries',
-              amt: Number(it.finalItemTotal) || (Number(it.price) * (Number(it.quantity) || 1)) || 0
+              cat: it?.category || matchedProd?.category || 'Groceries',
+              amt: Number(it?.finalItemTotal) || (Number(it?.price || 0) * (Number(it?.quantity) || 1)) || 0
             };
           })
         : [{ cat: 'Groceries', amt: Number(o.finalAmount) || 0 }];
@@ -725,7 +728,7 @@ export default function AnalyticsHubTab({ onOpenDesignSystem, onToast }) {
         <div className="flex items-center gap-2">
           <div className="badge">
             <i />
-            <span>Store Orders · {orders.length} Recorded</span>
+            <span>Store Orders · {safeOrders.length} Recorded</span>
           </div>
         </div>
       </header>

@@ -314,20 +314,25 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     }
   }, []);
 
-  // Deep Real-Time Store Intelligence Snapshot
+  // Deep Real-Time Store Intelligence Snapshot (Ultra-Safe Guards)
   const storeSnapshot = useMemo(() => {
-    const totalRev = orders.reduce((s, o) => s + (Number(o.finalAmount) || 0), 0);
-    const pendingOrdersList = orders.filter(o => o.status === 'pending' || !o.status);
-    const deliveredOrdersList = orders.filter(o => o.status === 'delivered');
-    const outOfStockList = products.filter(p => p.stockStatus === 'Out of Stock' || Number(p.stock) <= 0);
-    const lowStockList = products.filter(p => Number(p.stock) > 0 && Number(p.stock) <= 5);
+    const safeOrders = Array.isArray(orders) ? orders : [];
+    const safeProducts = Array.isArray(products) ? products : [];
+    const safeCustomers = Array.isArray(customers) ? customers : [];
+    const safeOffers = Array.isArray(activeOffers) ? activeOffers : [];
+
+    const totalRev = safeOrders.reduce((s, o) => s + (Number(o?.finalAmount) || 0), 0);
+    const pendingOrdersList = safeOrders.filter(o => o && (o.status === 'pending' || !o.status));
+    const deliveredOrdersList = safeOrders.filter(o => o && o.status === 'delivered');
+    const outOfStockList = safeProducts.filter(p => p && (p.stockStatus === 'Out of Stock' || Number(p.stock) <= 0));
+    const lowStockList = safeProducts.filter(p => p && Number(p.stock) > 0 && Number(p.stock) <= 5);
 
     // Item sold frequency
     const itemSoldCount = {};
-    orders.forEach(o => {
-      (o.items || []).forEach(it => {
-        const n = it.name || it.baseProductName;
-        if (n) itemSoldCount[n] = (itemSoldCount[n] || 0) + (Number(it.quantity) || 1);
+    safeOrders.forEach(o => {
+      (o?.items || []).forEach(it => {
+        const n = it?.name || it?.baseProductName;
+        if (n) itemSoldCount[n] = (itemSoldCount[n] || 0) + (Number(it?.quantity) || 1);
       });
     });
     const topSoldItems = Object.entries(itemSoldCount)
@@ -335,29 +340,29 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
       .slice(0, 5)
       .map(e => `${e[0]} (${e[1]} units)`);
 
-    const upiOrders = orders.filter(o => o.paymentMethod === 'upi').length;
-    const cashOrders = orders.filter(o => o.paymentMethod === 'cash').length;
+    const upiOrders = safeOrders.filter(o => o && o.paymentMethod === 'upi').length;
+    const cashOrders = safeOrders.filter(o => o && o.paymentMethod === 'cash').length;
 
     return {
       storeName: storeSettings?.storeName || 'Ankush General Store',
       storeAddress: storeSettings?.storeAddress || 'Khorma, Pratappur',
-      totalOrders: orders.length,
+      totalOrders: safeOrders.length,
       totalRevenue: totalRev,
-      avgOrderValue: orders.length ? Math.round(totalRev / orders.length) : 0,
+      avgOrderValue: safeOrders.length ? Math.round(totalRev / safeOrders.length) : 0,
       pendingOrdersCount: pendingOrdersList.length,
-      pendingOrdersSample: pendingOrdersList.slice(0, 3).map(o => `#${o.id || o.orderId} (${o.customerName || 'Grahak'}: ₹${o.finalAmount})`),
+      pendingOrdersSample: pendingOrdersList.slice(0, 3).map(o => `#${o?.id || o?.orderId || 'ORD'} (${o?.customerName || 'Grahak'}: ₹${o?.finalAmount || 0})`),
       deliveredOrdersCount: deliveredOrdersList.length,
-      totalProductsCount: products.length,
+      totalProductsCount: safeProducts.length,
       topSoldItems: topSoldItems.length ? topSoldItems : ['Sprite', 'Fanta', 'Basmati Rice', 'Mustard Oil'],
       outOfStockCount: outOfStockList.length,
-      outOfStockSample: outOfStockList.map(p => p.name).slice(0, 8),
+      outOfStockSample: outOfStockList.map(p => p?.name || 'Saman').slice(0, 8),
       lowStockCount: lowStockList.length,
-      lowStockSample: lowStockList.map(p => `${p.name} (${p.stock} bache)`).slice(0, 8),
-      vipCustomersCount: customers.length,
+      lowStockSample: lowStockList.map(p => `${p?.name || 'Saman'} (${p?.stock || 0} bache)`).slice(0, 8),
+      vipCustomersCount: safeCustomers.length,
       upiOrdersCount: upiOrders,
       cashOrdersCount: cashOrders,
-      activeOffersCount: activeOffers.length,
-      activeOffersSample: activeOffers.map(o => o.title).slice(0, 5),
+      activeOffersCount: safeOffers.length,
+      activeOffersSample: safeOffers.map(o => o?.title || 'Offer').slice(0, 5),
       currentOpenStatus: storeSettings?.isStoreOpen ? 'Dukan Khuli Hai (Open)' : 'Dukan Band Hai (Closed)'
     };
   }, [orders, products, customers, storeSettings, activeOffers]);

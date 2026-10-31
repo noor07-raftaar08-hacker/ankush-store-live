@@ -122,6 +122,48 @@ function AdminLoginView({ onLoginSuccess, onBack }) {
   );
 }
 
+// Resilient Error Boundary to prevent any White Screen
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("Dashboard error caught by boundary:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#0b0720] text-white flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-3xl mb-4 border border-amber-500/30">
+            ⚠️
+          </div>
+          <h2 className="text-xl font-bold mb-2">Admin Dashboard Syncing</h2>
+          <p className="text-xs text-slate-400 max-w-md mb-6 leading-relaxed">
+            Dukan ka database sync ho raha hai. Niche button daba kar fresh session reload karein:
+          </p>
+          <button
+            onClick={() => {
+              try {
+                localStorage.removeItem('ankush_orders');
+                localStorage.removeItem('ankush_customers');
+              } catch (e) {}
+              window.location.reload();
+            }}
+            className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer"
+          >
+            🔄 Sync & Reload Dashboard
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // Master Content Switcher
 function AppContent() {
   const { currentView, setCurrentView, isAdminAuth, setIsAdminAuth } = useStore();
@@ -138,7 +180,9 @@ function AppContent() {
       {/* Main View Router */}
       {currentView === 'admin' ? (
         isAdminAuth ? (
-          <AdminDashboard />
+          <ErrorBoundary>
+            <AdminDashboard />
+          </ErrorBoundary>
         ) : (
           <AdminLoginView
             onLoginSuccess={() => setIsAdminAuth(true)}

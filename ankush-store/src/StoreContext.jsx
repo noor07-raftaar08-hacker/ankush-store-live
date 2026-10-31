@@ -949,10 +949,17 @@ export function StoreProvider({ children }) {
     }
   }, [currentUser]);
 
-  // Orders State
+  // Orders State with strict Array validation & corrupted cache purge
   const [orders, setOrders] = useState(() => {
-    const saved = localStorage.getItem('ankush_orders');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('ankush_orders');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    try { localStorage.removeItem('ankush_orders'); } catch (e) {}
+    return [];
   });
 
   const fetchOrders = async () => {
@@ -964,11 +971,27 @@ export function StoreProvider({ children }) {
       if (Array.isArray(data)) {
         setOrders(data);
         localStorage.setItem('ankush_orders', JSON.stringify(data));
+      } else {
+        console.warn('API returned non-array orders:', data);
       }
     } catch (e) {}
   };
 
   useEffect(() => {
+    // Sanitize any invalid legacy localStorage items
+    try {
+      const savedOrders = localStorage.getItem('ankush_orders');
+      if (savedOrders && !Array.isArray(JSON.parse(savedOrders))) {
+        localStorage.removeItem('ankush_orders');
+      }
+      const savedCustomers = localStorage.getItem('ankush_customers');
+      if (savedCustomers && !Array.isArray(JSON.parse(savedCustomers))) {
+        localStorage.removeItem('ankush_customers');
+      }
+    } catch (e) {
+      localStorage.removeItem('ankush_orders');
+    }
+
     fetchOrders();
     const interval = setInterval(fetchOrders, 12000);
     return () => clearInterval(interval);
@@ -1412,14 +1435,17 @@ export function StoreProvider({ children }) {
       activePackageModalProduct, setActivePackageModalProduct,
       customers, currentUser, registerCustomer, loginCustomer, logoutCustomer,
       updateCustomerData, acknowledgeCoinReward, updateCustomerProfile,
-      offers, activeOffers: offers.filter(o => o.is_active), addOffer, toggleOffer, removeOffer,
-      orders, addOrder, confirmDelivery, fetchOrders,
-      getPendingOrders: () => orders.filter(o => o.status === 'pending' || o.status === 'processing' || o.status === 'packed'),
-      getDeliveredOrders: () => orders.filter(o => o.status === 'delivered'),
-      searchOrdersByName: (q) => (!q.trim() ? orders : orders.filter(o => o.customerName?.toLowerCase().includes(q.toLowerCase()) || o.id?.toLowerCase().includes(q.toLowerCase()))),
-      getOrdersByDate: (d) => orders.filter(o => new Date(o.orderDate).toISOString().split('T')[0] === d),
-      getTotalSales: () => orders.reduce((s, o) => s + (Number(o.finalAmount) || 0), 0),
-      getSalesByDate: (d) => orders.filter(o => new Date(o.orderDate).toISOString().split('T')[0] === d).reduce((s, o) => s + (Number(o.finalAmount) || 0), 0),
+      offers: Array.isArray(offers) ? offers : [],
+      activeOffers: Array.isArray(offers) ? offers.filter(o => o && o.is_active) : [],
+      addOffer, toggleOffer, removeOffer,
+      orders: Array.isArray(orders) ? orders : [],
+      addOrder, confirmDelivery, fetchOrders,
+      getPendingOrders: () => (Array.isArray(orders) ? orders.filter(o => o && (o.status === 'pending' || o.status === 'processing' || o.status === 'packed')) : []),
+      getDeliveredOrders: () => (Array.isArray(orders) ? orders.filter(o => o && o.status === 'delivered') : []),
+      searchOrdersByName: (q) => (!Array.isArray(orders) ? [] : (!q.trim() ? orders : orders.filter(o => o && (o.customerName?.toLowerCase().includes(q.toLowerCase()) || o.id?.toLowerCase().includes(q.toLowerCase()))))),
+      getOrdersByDate: (d) => (Array.isArray(orders) ? orders.filter(o => o && o.orderDate && new Date(o.orderDate).toISOString().split('T')[0] === d) : []),
+      getTotalSales: () => (Array.isArray(orders) ? orders.reduce((s, o) => s + (Number(o?.finalAmount) || 0), 0) : 0),
+      getSalesByDate: (d) => (Array.isArray(orders) ? orders.filter(o => o && o.orderDate && new Date(o.orderDate).toISOString().split('T')[0] === d).reduce((s, o) => s + (Number(o?.finalAmount) || 0), 0) : 0),
       cartItems: detailedCartItems, addToCart, removeFromCart, updateQuantity, clearCart, repeatLastOrder,
       totalItems, rawSubtotalPrice, totalProductDiscount, totalPrice, deliveryCharge, finalAmount, totalSavings,
       isMinOrderMet, isDistanceEligible, isWithinFreeDeliveryRange,

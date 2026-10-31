@@ -194,7 +194,14 @@ export default function AdminDashboard() {
     });
   };
 
-  const pendingOrders = useMemo(() => getPendingOrders(), [orders]);
+  const pendingOrders = useMemo(() => {
+    try {
+      const list = getPendingOrders ? getPendingOrders() : [];
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return [];
+    }
+  }, [orders, getPendingOrders]);
 
   const activeThemeObj = useMemo(
     () => DASHBOARD_THEMES.find(t => t.id === dashboardTheme) || DASHBOARD_THEMES[0],
@@ -258,17 +265,17 @@ export default function AdminDashboard() {
   const NAVIGATION_ITEMS = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, badge: null },
     { id: 'analytics-hub', label: 'Analytics Hub', icon: BarChart3, badge: 'Live' },
-    { id: 'pending', label: 'Pending Orders', icon: ShoppingCart, badge: pendingOrders.length > 0 ? String(pendingOrders.length) : null },
+    { id: 'pending', label: 'Pending Orders', icon: ShoppingCart, badge: (pendingOrders || []).length > 0 ? String(pendingOrders.length) : null },
     { id: 'delivered', label: 'Delivered Orders', icon: CheckCircle2, badge: null },
-    { id: 'add-product', label: 'Products & Packs', icon: Package, badge: String(products.length) },
+    { id: 'add-product', label: 'Products & Packs', icon: Package, badge: String((products || []).length) },
     { id: 'discount-panel', label: 'Discount Panel', icon: Sparkles, badge: null },
     { id: 'coin-delivery', label: 'Coins & Delivery Rules', icon: Sparkles, badge: 'Studio' },
     { id: 'offers', label: 'Banners & Categories', icon: Layers, badge: 'Design' },
-    { id: 'customers', label: 'VIP Customers', icon: Users, badge: String(customers.length) },
+    { id: 'customers', label: 'VIP Customers', icon: Users, badge: String((customers || []).length) },
     { id: 'logo-management', label: 'Brand & Logo Studio', icon: Palette, badge: null },
     { id: 'about-content', label: 'About Content', icon: FileText, badge: null },
     { id: 'social-media', label: 'Social & Contact', icon: Globe, badge: null },
-    { id: 'store-status', label: 'Store Open / Closed', icon: ShieldCheck, badge: storeSettings.isStoreOpen ? 'ON' : 'OFF' }
+    { id: 'store-status', label: 'Store Open / Closed', icon: ShieldCheck, badge: storeSettings?.isStoreOpen ? 'ON' : 'OFF' }
   ];
 
   return (

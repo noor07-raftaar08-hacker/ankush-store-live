@@ -92,12 +92,28 @@ export default function OverviewTab({
   const [txStatusFilter, setTxStatusFilter] = useState('All');
   const [hoveredPointIdx, setHoveredPointIdx] = useState(null);
 
-  const pendingOrders = useMemo(() => getPendingOrders(), [orders]);
-  const deliveredOrders = useMemo(() => getDeliveredOrders(), [orders]);
+  const safeOrders = useMemo(() => Array.isArray(orders) ? orders : [], [orders]);
+  const pendingOrders = useMemo(() => {
+    try {
+      const list = getPendingOrders();
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return [];
+    }
+  }, [orders, getPendingOrders]);
+
+  const deliveredOrders = useMemo(() => {
+    try {
+      const list = getDeliveredOrders();
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return [];
+    }
+  }, [orders, getDeliveredOrders]);
 
   const storeGrandRevenue = useMemo(() => {
-    return orders.reduce((s, o) => s + (Number(o.finalAmount) || 0), 0);
-  }, [orders]);
+    return safeOrders.reduce((s, o) => s + (Number(o?.finalAmount) || 0), 0);
+  }, [safeOrders]);
 
   // Analytics by Timeframe - Real Data Engine from Actual Store Orders
   const storeAnalytics = useMemo(() => {
@@ -109,7 +125,8 @@ export default function OverviewTab({
       const counts = Array(n).fill(0);
       let total = 0;
 
-      orders.forEach(o => {
+      safeOrders.forEach(o => {
+        if (!o) return;
         const oTime = Date.parse(o.orderDate || o.createdAt || now.toISOString());
         if (filterFn(oTime, now)) {
           const bIdx = bucketIdxFn(oTime, now, n);
@@ -218,20 +235,21 @@ export default function OverviewTab({
     animId = requestAnimationFrame(step);
 
     return () => cancelAnimationFrame(animId);
-  }, [timeframe, orders.length]);
+  }, [timeframe, safeOrders.length]);
 
   // Store Activity Stream
   const recentActivities = useMemo(() => {
     const acts = [];
-    if (orders.length > 0) {
-      orders.slice(0, 3).forEach((o) => {
+    if (safeOrders.length > 0) {
+      safeOrders.slice(0, 3).forEach((o) => {
+        if (!o) return;
         acts.push({
           id: `act-${o.id}`,
-          title: `${o.customerName} placed Order ${o.id}`,
-          description: `${(o.items || []).length} items • ${o.customerAddress}`,
-          timestamp: new Date(o.orderDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          title: `${o.customerName || 'Customer'} placed Order ${o.id || ''}`,
+          description: `${(o.items || []).length} items • ${o.customerAddress || ''}`,
+          timestamp: o.orderDate ? new Date(o.orderDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'Live',
           status: o.status === 'delivered' ? 'emerald' : 'cyan',
-          badge: `₹${Number(o.finalAmount).toFixed(0)}`,
+          badge: `₹${Number(o.finalAmount || 0).toFixed(0)}`,
           icon: o.status === 'delivered' ? ShieldCheck : ShoppingCart
         });
       });
@@ -239,7 +257,7 @@ export default function OverviewTab({
     acts.push(
       {
         id: 'act-disc',
-        title: `${products.filter(p => p.discountConfig?.isActive).length} Product Offers Active`,
+        title: `${(products || []).filter(p => p && p.discountConfig?.isActive).length} Product Offers Active`,
         description: 'Dynamic quantity rules & BOGO configured on storefront.',
         timestamp: 'Active',
         status: 'violet',
@@ -248,7 +266,7 @@ export default function OverviewTab({
       },
       {
         id: 'act-vip',
-        title: `${customers.length} VIP Loyalty Accounts`,
+        title: `${(customers || []).length} VIP Loyalty Accounts`,
         description: '4-digit PIN authentication & coin rewards enabled.',
         timestamp: 'Active',
         status: 'amber',
@@ -257,11 +275,12 @@ export default function OverviewTab({
       }
     );
     return acts.slice(0, 5);
-  }, [orders, products, customers.length]);
+  }, [safeOrders, products, customers]);
 
   // Filtered Overview Orders
   const overviewFilteredOrders = useMemo(() => {
-    return orders.filter(ord => {
+    return safeOrders.filter(ord => {
+      if (!ord) return false;
       const statusMatch =
         txStatusFilter === 'All' ||
         (txStatusFilter === 'Completed' && ord.status === 'delivered') ||
@@ -293,8 +312,8 @@ export default function OverviewTab({
               ₹{Math.round(storeGrandRevenue * ovAnimProgress).toLocaleString('en-IN')}
             </h3>
             <p className="text-xs text-emerald-400 font-semibold mt-1 flex items-center gap-1">
-              <span>{orders.length > 0 ? `● ${orders.length} Orders` : '● 0 Orders'}</span>
-              <span className="text-slate-400 font-normal">{orders.length > 0 ? 'Store Database' : 'Awaiting first order'}</span>
+              <span>{safeOrders.length > 0 ? `● ${safeOrders.length} Orders` : '● 0 Orders'}</span>
+              <span className="text-slate-400 font-normal">{safeOrders.length > 0 ? 'Store Database' : 'Awaiting first order'}</span>
             </p>
           </div>
         </div>
@@ -418,7 +437,7 @@ export default function OverviewTab({
 
             {/* Gradient Area with Water-Flow Fade */}
             <path
-              key={`ov-area-${timeframe}-${orders.length}`}
+              key={`ov-area-${timeframe}-${safeOrders.length}`}
               d={chartPath.area}
               fill="url(#ovCurveGrad)"
               style={{
@@ -429,7 +448,7 @@ export default function OverviewTab({
 
             {/* Hermite Spline Curve with Water-Flow Drawing */}
             <path
-              key={`ov-line-${timeframe}-${orders.length}`}
+              key={`ov-line-${timeframe}-${safeOrders.length}`}
               d={chartPath.line}
               fill="none"
               stroke={activeChartColors[0]}
@@ -499,7 +518,7 @@ export default function OverviewTab({
         <div className="xl:col-span-8 liquid-glass-panel rounded-[28px] p-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.08]">
             <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-              Recent Customer Orders ({orders.length})
+              Recent Customer Orders ({safeOrders.length})
             </h4>
 
             <div className="flex items-center gap-2">
