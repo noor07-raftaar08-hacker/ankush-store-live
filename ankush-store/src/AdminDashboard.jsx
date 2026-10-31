@@ -183,6 +183,16 @@ export default function AdminDashboard() {
   const [designSystemOpen, setDesignSystemOpen] = useState(false);
   const [inspectedOrder, setInspectedOrder] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
+  const [isGenAiActive, setIsGenAiActive] = useState(() => localStorage.getItem('ags_gen_ai_active') !== 'false');
+
+  const toggleGenAi = () => {
+    setIsGenAiActive(prev => {
+      const next = !prev;
+      localStorage.setItem('ags_gen_ai_active', String(next));
+      triggerToast(next ? '✨ Gen AI Online' : '💤 Gen AI Offline', next ? 'Co-Pilot is listening & ready.' : 'Co-Pilot has been turned off.');
+      return next;
+    });
+  };
 
   const pendingOrders = useMemo(() => getPendingOrders(), [orders]);
 
@@ -561,7 +571,22 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Gen AI Master Switch */}
+            <button
+              onClick={toggleGenAi}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-black transition-all cursor-pointer border ${
+                isGenAiActive
+                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-400/40 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-400 border-white/10'
+              }`}
+              title={isGenAiActive ? 'Click to turn off Gen AI Assistant' : 'Click to turn on Gen AI Assistant'}
+            >
+              <span className={`w-2 h-2 rounded-full ${isGenAiActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+              <span className="text-sm">✨</span>
+              <span>Gen AI: {isGenAiActive ? 'ON' : 'OFF'}</span>
+            </button>
+
             {/* Theme Studio Button */}
             <GlassButton
               variant="secondary"
@@ -719,10 +744,15 @@ export default function AdminDashboard() {
       </AnimatePresence>
 
       {/* Intelligent Jarvis-Style Canvas AI Assistant (Gen) */}
-      <GenAIAssistant onNavigateTab={(tab) => {
-        setActiveTab(tab);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }} />
+      {isGenAiActive && (
+        <GenAIAssistant
+          activeTab={activeTab}
+          onNavigateTab={(tab) => {
+            setActiveTab(tab);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
+      )}
     </div>
   );
 }

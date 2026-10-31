@@ -27,7 +27,6 @@ import FreshFooter from './components/front/FreshFooter';
 import MobileStoreView from './components/front/MobileStoreView';
 import TrackOrderModal from './components/TrackOrderModal';
 import OrderReceiptModal from './components/OrderReceiptModal';
-import GenAIAssistant from './components/GenAIAssistant';
 
 // Shared Icons
 import { ShoppingCart, Check, X } from './components/Icons';
@@ -661,9 +660,6 @@ export default function PublicStore() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Intelligent Jarvis-Style Canvas AI Assistant (Gen) */}
-      <GenAIAssistant />
 
     </div>
   );

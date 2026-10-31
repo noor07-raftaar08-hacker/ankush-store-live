@@ -9,7 +9,6 @@ import {
 } from './StoreContext';
 import Footer from './Footer';
 import OrderReceiptModal from './components/OrderReceiptModal';
-import GenAIAssistant from './components/GenAIAssistant';
 
 export default function CustomerDashboard() {
   const {
@@ -2585,15 +2584,6 @@ export default function CustomerDashboard() {
           );
         })}
       </nav>
-
-      {/* GEN AI ASSISTANT (CANVAS ORB) */}
-      <GenAIAssistant
-        onNavigateTab={(tab) => {
-          if (['dashboard', 'orders', 'rashan', 'wallet', 'offers', 'profile', 'support'].includes(tab)) {
-            setActiveTab(tab);
-          }
-        }}
-      />
 
       {/* Footer */}
       <Footer />
