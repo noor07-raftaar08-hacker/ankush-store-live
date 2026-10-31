@@ -36,10 +36,10 @@ export default function CustomersTab({ onToast }) {
     setResetPinMap(prev => ({ ...prev, [phone]: '' }));
   };
 
-  const filteredCustomers = customers.filter(c =>
+  const filteredCustomers = (Array.isArray(customers) ? customers : []).filter(c =>
     !customerSearch ||
-    (c.name && c.name.toLowerCase().includes(customerSearch.toLowerCase())) ||
-    (c.phone && c.phone.includes(customerSearch))
+    (c && c.name && c.name.toLowerCase().includes(customerSearch.toLowerCase())) ||
+    (c && c.phone && c.phone.includes(customerSearch))
   );
 
   return (
@@ -48,7 +48,7 @@ export default function CustomersTab({ onToast }) {
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Users className="w-5 h-5 text-amber-400" />
-            <span>VIP Loyalty Customers & Khata Manager ({customers.length})</span>
+            <span>VIP Loyalty Customers & Khata Manager ({(customers || []).length})</span>
           </h2>
           <p className="text-xs text-[#A5B4CC] mt-0.5">
             Manage customer 4-digit PINs, wallet coin balances & send instant promotional bonus rewards

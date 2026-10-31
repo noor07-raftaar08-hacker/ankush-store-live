@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, createContext, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DEFAULT_STORE_CATEGORIES,
@@ -415,7 +415,11 @@ export const useStore = () => useContext(StoreContext);
 
 export function StoreProvider({ children }) {
   const [currentView, setCurrentViewRaw] = useState(() => {
-    return localStorage.getItem('ankush_current_view') || 'home';
+    try {
+      return localStorage.getItem('ankush_current_view') || 'home';
+    } catch (e) {
+      return 'home';
+    }
   });
   const setCurrentView = useCallback((view) => {
     setCurrentViewRaw(view);
@@ -424,7 +428,23 @@ export function StoreProvider({ children }) {
     } catch (e) {}
   }, []);
 
-  const [isAdminAuth, setIsAdminAuth] = useState(() => localStorage.getItem('ankush_admin_auth') === 'true');
+  const [isAdminAuth, setIsAdminAuthRaw] = useState(() => {
+    try {
+      return localStorage.getItem('ankush_admin_auth') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+  const setIsAdminAuth = useCallback((val) => {
+    setIsAdminAuthRaw(Boolean(val));
+    try {
+      if (val) {
+        localStorage.setItem('ankush_admin_auth', 'true');
+      } else {
+        localStorage.removeItem('ankush_admin_auth');
+      }
+    } catch (e) {}
+  }, []);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalInitialTab, setLoginModalInitialTab] = useState('customer');
 
@@ -661,8 +681,15 @@ export function StoreProvider({ children }) {
 
   // Customers & VIP Auth State
   const [customers, setCustomers] = useState(() => {
-    const saved = localStorage.getItem('ankush_customers');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('ankush_customers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    try { localStorage.removeItem('ankush_customers'); } catch (e) {}
+    return [];
   });
 
   const [currentUser, setCurrentUser] = useState(() => {
@@ -1452,9 +1479,25 @@ export function StoreProvider({ children }) {
       getPendingOrders: () => (Array.isArray(orders) ? orders.filter(o => o && (o.status === 'pending' || o.status === 'processing' || o.status === 'packed')) : []),
       getDeliveredOrders: () => (Array.isArray(orders) ? orders.filter(o => o && o.status === 'delivered') : []),
       searchOrdersByName: (q) => (!Array.isArray(orders) ? [] : (!q.trim() ? orders : orders.filter(o => o && (o.customerName?.toLowerCase().includes(q.toLowerCase()) || o.id?.toLowerCase().includes(q.toLowerCase()))))),
-      getOrdersByDate: (d) => (Array.isArray(orders) ? orders.filter(o => o && o.orderDate && new Date(o.orderDate).toISOString().split('T')[0] === d) : []),
+      getOrdersByDate: (d) => (Array.isArray(orders) ? orders.filter(o => {
+        try {
+          if (!o || !o.orderDate) return false;
+          const dt = new Date(o.orderDate);
+          return !isNaN(dt.getTime()) && dt.toISOString().split('T')[0] === d;
+        } catch (e) {
+          return false;
+        }
+      }) : []),
       getTotalSales: () => (Array.isArray(orders) ? orders.reduce((s, o) => s + (Number(o?.finalAmount) || 0), 0) : 0),
-      getSalesByDate: (d) => (Array.isArray(orders) ? orders.filter(o => o && o.orderDate && new Date(o.orderDate).toISOString().split('T')[0] === d).reduce((s, o) => s + (Number(o?.finalAmount) || 0), 0) : 0),
+      getSalesByDate: (d) => (Array.isArray(orders) ? orders.filter(o => {
+        try {
+          if (!o || !o.orderDate) return false;
+          const dt = new Date(o.orderDate);
+          return !isNaN(dt.getTime()) && dt.toISOString().split('T')[0] === d;
+        } catch (e) {
+          return false;
+        }
+      }).reduce((s, o) => s + (Number(o?.finalAmount) || 0), 0) : 0),
       cartItems: detailedCartItems, addToCart, removeFromCart, updateQuantity, clearCart, repeatLastOrder,
       totalItems, rawSubtotalPrice, totalProductDiscount, totalPrice, deliveryCharge, finalAmount, totalSavings,
       isMinOrderMet, isDistanceEligible, isWithinFreeDeliveryRange,

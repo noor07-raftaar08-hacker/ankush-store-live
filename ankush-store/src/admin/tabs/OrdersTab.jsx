@@ -14,8 +14,23 @@ export default function OrdersTab({ mode = 'pending', onInspectOrder, onToast })
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
 
-  const pendingOrders = useMemo(() => getPendingOrders(), [orders]);
-  const deliveredOrders = useMemo(() => getDeliveredOrders(), [orders]);
+  const pendingOrders = useMemo(() => {
+    try {
+      const res = getPendingOrders ? getPendingOrders() : [];
+      return Array.isArray(res) ? res : [];
+    } catch (e) {
+      return [];
+    }
+  }, [orders, getPendingOrders]);
+
+  const deliveredOrders = useMemo(() => {
+    try {
+      const res = getDeliveredOrders ? getDeliveredOrders() : [];
+      return Array.isArray(res) ? res : [];
+    } catch (e) {
+      return [];
+    }
+  }, [orders, getDeliveredOrders]);
 
   const handleSendWhatsAppOrderUpdate = (order, statusType) => {
     const statusNote = statusType === 'delivered'
@@ -36,13 +51,22 @@ export default function OrdersTab({ mode = 'pending', onInspectOrder, onToast })
   // Filtered Delivered Orders
   const filteredDeliveredOrders = useMemo(() => {
     return deliveredOrders.filter(o => {
+      if (!o) return false;
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch = !q ||
         (o.customerName && o.customerName.toLowerCase().includes(q)) ||
         (o.id && o.id.toLowerCase().includes(q)) ||
         (o.customerPhone && o.customerPhone.includes(q));
 
-      const matchesDate = !selectedDate || new Date(o.orderDate).toISOString().split('T')[0] === selectedDate;
+      const matchesDate = !selectedDate || (() => {
+        try {
+          if (!o.orderDate) return false;
+          const dt = new Date(o.orderDate);
+          return !isNaN(dt.getTime()) && dt.toISOString().split('T')[0] === selectedDate;
+        } catch (e) {
+          return false;
+        }
+      })();
       return matchesSearch && matchesDate;
     });
   }, [deliveredOrders, searchQuery, selectedDate]);

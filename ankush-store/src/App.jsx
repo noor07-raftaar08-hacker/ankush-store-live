@@ -17,7 +17,10 @@ function AdminLoginView({ onLoginSuccess, onBack }) {
   const handleLogin = (e) => {
     e.preventDefault();
     if (username.trim() === 'AnkushStore' && password === 'AGenStore@071') {
-      localStorage.setItem('ankush_admin_auth', 'true');
+      try {
+        localStorage.setItem('ankush_admin_auth', 'true');
+        localStorage.setItem('ankush_current_view', 'admin');
+      } catch (err) {}
       onLoginSuccess();
     } else {
       setError('Galat Credentials! Sirf shop owner access kar sakte hain.');
@@ -204,7 +207,10 @@ function AppContent() {
           </ErrorBoundary>
         ) : (
           <AdminLoginView
-            onLoginSuccess={() => setIsAdminAuth(true)}
+            onLoginSuccess={() => {
+              setIsAdminAuth(true);
+              setCurrentView('admin');
+            }}
             onBack={() => setCurrentView('home')}
           />
         )

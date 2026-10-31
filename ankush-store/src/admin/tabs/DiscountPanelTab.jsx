@@ -61,7 +61,8 @@ export default function DiscountPanelTab({ onToast }) {
   const [timeView, setTimeView] = useState('7d'); // '7d' | '30d'
   const [hoveredChartIdx, setHoveredChartIdx] = useState(null);
 
-  const selectedDiscountProduct = products.find(p => p.id === selectedDiscountProductId) || products[0];
+  const safeProducts = Array.isArray(products) ? products : [];
+  const selectedDiscountProduct = safeProducts.find(p => p && p.id === selectedDiscountProductId) || safeProducts[0];
   const selectedProdUnit = selectedDiscountProduct?.unit || 'kg';
 
   const [discountForm, setDiscountForm] = useState(() => selectedDiscountProduct?.discountConfig || {

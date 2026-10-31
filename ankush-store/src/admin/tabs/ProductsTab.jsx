@@ -154,10 +154,12 @@ export default function ProductsTab({ onToast }) {
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
+    const list = Array.isArray(products) ? products : [];
+    return list.filter(p => {
+      if (!p) return false;
       const matchesSearch = !adminProdSearch ||
-        p.name.toLowerCase().includes(adminProdSearch.toLowerCase()) ||
-        p.category.toLowerCase().includes(adminProdSearch.toLowerCase());
+        (p.name && p.name.toLowerCase().includes(adminProdSearch.toLowerCase())) ||
+        (p.category && p.category.toLowerCase().includes(adminProdSearch.toLowerCase()));
 
       if (!matchesSearch) return false;
       if (stockFilterMode === 'LOW') return p.stockStatus === 'Few Available' || p.stockStatus === 'Out of Stock';
@@ -406,7 +408,7 @@ export default function ProductsTab({ onToast }) {
       <div className="liquid-glass-panel rounded-[28px] p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-bold text-white">Live Store Inventory ({products.length})</h3>
+            <h3 className="text-lg font-bold text-white">Live Store Inventory ({(products || []).length})</h3>
             <p className="text-xs text-[#A5B4CC]">Inline quick price updates, stock management & package view</p>
           </div>
 

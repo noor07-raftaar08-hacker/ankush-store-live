@@ -92,6 +92,8 @@ export default function OverviewTab({
   const [txStatusFilter, setTxStatusFilter] = useState('All');
   const [hoveredPointIdx, setHoveredPointIdx] = useState(null);
 
+  const safeProducts = useMemo(() => Array.isArray(products) ? products : [], [products]);
+  const safeCustomers = useMemo(() => Array.isArray(customers) ? customers : [], [customers]);
   const safeOrders = useMemo(() => Array.isArray(orders) ? orders : [], [orders]);
   const pendingOrders = useMemo(() => {
     try {
@@ -350,7 +352,7 @@ export default function OverviewTab({
           </div>
           <div className="mt-3">
             <h3 className="text-2xl font-black text-white tabular-nums">
-              {products.length} Products
+              {safeProducts.length} Products
             </h3>
             <p className="text-xs text-violet-300 font-medium mt-1">Custom Packs Configured</p>
           </div>
@@ -369,7 +371,7 @@ export default function OverviewTab({
           </div>
           <div className="mt-3">
             <h3 className="text-2xl font-black text-white tabular-nums">
-              {customers.length} Members
+              {safeCustomers.length} Members
             </h3>
             <p className="text-xs text-cyan-300 font-medium mt-1">4-Digit PIN Protected</p>
           </div>

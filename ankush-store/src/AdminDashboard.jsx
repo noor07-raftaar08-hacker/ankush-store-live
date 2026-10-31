@@ -659,45 +659,61 @@ export default function AdminDashboard() {
           )}
 
           {activeTab === 'analytics-hub' && (
-            <AnalyticsHubTab
-              onOpenDesignSystem={() => setDesignSystemOpen(true)}
-              onToast={triggerToast}
-            />
+            <TabErrorBoundary>
+              <AnalyticsHubTab
+                onOpenDesignSystem={() => setDesignSystemOpen(true)}
+                onToast={triggerToast}
+              />
+            </TabErrorBoundary>
           )}
 
           {(activeTab === 'pending' || activeTab === 'delivered') && (
-            <OrdersTab
-              mode={activeTab}
-              onInspectOrder={(ord) => setInspectedOrder(ord)}
-              onToast={triggerToast}
-            />
+            <TabErrorBoundary>
+              <OrdersTab
+                mode={activeTab}
+                onInspectOrder={(ord) => setInspectedOrder(ord)}
+                onToast={triggerToast}
+              />
+            </TabErrorBoundary>
           )}
 
           {activeTab === 'add-product' && (
-            <ProductsTab onToast={triggerToast} />
+            <TabErrorBoundary>
+              <ProductsTab onToast={triggerToast} />
+            </TabErrorBoundary>
           )}
 
           {activeTab === 'discount-panel' && (
-            <DiscountPanelTab onToast={triggerToast} />
+            <TabErrorBoundary>
+              <DiscountPanelTab onToast={triggerToast} />
+            </TabErrorBoundary>
           )}
 
           {activeTab === 'coin-delivery' && (
-            <CoinDeliveryStudioTab onToast={triggerToast} />
+            <TabErrorBoundary>
+              <CoinDeliveryStudioTab onToast={triggerToast} />
+            </TabErrorBoundary>
           )}
 
           {activeTab === 'offers' && (
-            <BannerOffersTab onToast={triggerToast} />
+            <TabErrorBoundary>
+              <BannerOffersTab onToast={triggerToast} />
+            </TabErrorBoundary>
           )}
 
           {activeTab === 'customers' && (
-            <CustomersTab onToast={triggerToast} />
+            <TabErrorBoundary>
+              <CustomersTab onToast={triggerToast} />
+            </TabErrorBoundary>
           )}
 
           {(activeTab === 'logo-management' ||
             activeTab === 'store-status' ||
             activeTab === 'about-content' ||
             activeTab === 'social-media') && (
-            <StoreSettingsTab activeSubView={activeTab} onToast={triggerToast} />
+            <TabErrorBoundary>
+              <StoreSettingsTab activeSubView={activeTab} onToast={triggerToast} />
+            </TabErrorBoundary>
           )}
         </main>
 
