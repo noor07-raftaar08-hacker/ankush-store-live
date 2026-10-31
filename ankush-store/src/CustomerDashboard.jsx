@@ -2320,23 +2320,24 @@ export default function CustomerDashboard() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Delivery Distance Zone (From Khorma Store)
+                    Delivery Distance Zone (KM)
                   </label>
                   <select
-                    value={customerDistanceKm}
+                    value={customerDistanceKm || ''}
                     onChange={e => {
                       const km = Number(e.target.value);
+                      const matched = (storeSettings?.deliveryDistanceConfig?.slabs || []).find(s => s.maxKm === km);
                       setCustomerDistanceKm(km);
-                      setDistanceZoneLabel(
-                        km <= 2.0
-                          ? 'Khorma / Pratappur Town (Under 2 km — Free Delivery over ₹1500)'
-                          : 'Nearby Village Zone (2 to 3 km)'
-                      );
+                      setDistanceZoneLabel(matched?.label || `Up to ${km} km`);
                     }}
                     className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-white"
                   >
-                    <option value={1.2}>📍 Khorma / Pratappur Town (Under 2 km — Eligible for Free Delivery)</option>
-                    <option value={2.5}>🛵 Nearby Area (2 km - 3 km — ₹30 Standard Delivery)</option>
+                    <option value="">-- Delivery Distance (KM) Chunein --</option>
+                    {(storeSettings?.deliveryDistanceConfig?.slabs || []).map(slab => (
+                      <option key={slab.id} value={slab.maxKm}>
+                        📍 Up to {slab.maxKm} km ({slab.label || `${slab.maxKm} km`}) — Delivery: ₹{slab.charge}{slab.minOrderForFree > 0 ? ` (Free on ₹${slab.minOrderForFree}+)` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

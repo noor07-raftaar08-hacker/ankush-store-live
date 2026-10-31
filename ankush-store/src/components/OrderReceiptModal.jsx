@@ -167,12 +167,12 @@ export default function OrderReceiptModal({ order, onClose }) {
             )}
 
             <div className="flex justify-between text-slate-600">
-              <span>Home Delivery ({order.distanceZoneLabel || 'Local'}):</span>
+              <span>Home Delivery ({order.distanceZoneLabel || (order.distanceKm ? `Up to ${order.distanceKm} km` : 'Local Delivery')}):</span>
               <span className="font-bold tabular-nums">
-                {order.deliveryCharge === 0 || order.isFreeDeliveryApplied ? (
-                  <span className="text-emerald-600 font-black">FREE (₹0)</span>
+                {Number(order.deliveryCharge) === 0 || order.isFreeDeliveryApplied ? (
+                  <span className="text-emerald-600 font-black">FREE (₹0) 🎉</span>
                 ) : (
-                  `₹${order.deliveryCharge || 30}`
+                  `₹${order.deliveryCharge}`
                 )}
               </span>
             </div>

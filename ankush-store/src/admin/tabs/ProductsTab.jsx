@@ -42,9 +42,8 @@ export default function ProductsTab({ onToast }) {
     if (!newProduct.name.trim()) return;
 
     const basePrice = Number(newProduct.price) || 50;
-    const resolvedPackages = (newProduct.packages && newProduct.packages.length > 0)
-      ? newProduct.packages
-      : createDefaultPackagesForProduct({ ...newProduct, price: basePrice });
+    // Packages are strictly optional. User's exact configured packages (or empty []) are saved
+    const resolvedPackages = Array.isArray(newProduct.packages) ? newProduct.packages : [];
 
     if (editingProductId) {
       updateProduct(editingProductId, {
@@ -95,7 +94,7 @@ export default function ProductsTab({ onToast }) {
       stock_quantity: String(prod.stock_quantity || 100),
       stockStatus: prod.stockStatus || 'Full Stock',
       image_url: prod.image_url || '📦',
-      packages: prod.packages || createDefaultPackagesForProduct(prod)
+      packages: Array.isArray(prod.packages) ? [...prod.packages] : []
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -343,9 +342,28 @@ export default function ProductsTab({ onToast }) {
 
           {/* Package Builder Sub-form */}
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
-            <h4 className="text-xs font-bold text-violet-300 uppercase tracking-wider">
-              📦 Custom Weight / Size Packages for this product:
-            </h4>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h4 className="text-xs font-bold text-violet-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>📦</span>
+                  <span>Custom Weight / Size Packages for this product</span>
+                  <span className="text-[10px] text-emerald-400 font-normal px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">Optional</span>
+                </h4>
+                <p className="text-[11px] text-[#A5B4CC] mt-0.5">
+                  Packages dalna compulsory nahi hai. Agar package nahi dalenge ya remove karenge toh product base price aur base unit ({newProduct.unit || 'kg'}) se direct sell hoga.
+                </p>
+              </div>
+              {(newProduct.packages || []).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setNewProduct({ ...newProduct, packages: [] })}
+                  className="text-xs text-rose-400 hover:text-rose-300 underline font-semibold cursor-pointer self-start sm:self-auto"
+                >
+                  Clear All Packages
+                </button>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
               <input
                 type="text"
@@ -378,22 +396,44 @@ export default function ProductsTab({ onToast }) {
             </div>
 
             {/* List of configured packages */}
-            {(newProduct.packages || []).length > 0 && (
+            {(newProduct.packages || []).length > 0 ? (
               <div className="space-y-1.5 pt-2">
                 {newProduct.packages.map(pkg => (
-                  <div key={pkg.packageId} className="flex items-center justify-between bg-[#0A0E1E] px-3 py-2 rounded-xl text-xs">
-                    <span>
-                      <b>{pkg.packageName || pkg.weight}</b> ({pkg.weight}) — <span className="text-emerald-300 font-bold">₹{pkg.price}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemovePackage(pkg.packageId)}
-                      className="text-rose-400 hover:underline cursor-pointer"
-                    >
-                      Remove
-                    </button>
+                  <div key={pkg.packageId} className="flex items-center justify-between bg-[#0A0E1E] px-3.5 py-2 rounded-xl text-xs border border-white/5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-violet-400 font-bold">📦</span>
+                      <span>
+                        <b>{pkg.packageName || pkg.weight}</b> ({pkg.weight}) — <span className="text-emerald-300 font-bold">₹{pkg.price}</span>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingPkgId(pkg.packageId);
+                          setPkgNameInput(pkg.packageName || '');
+                          setPkgWeightInput(pkg.weight || '');
+                          setPkgPriceInput(String(pkg.price || ''));
+                          setPkgStockInput(pkg.stockStatus || 'Full Stock');
+                        }}
+                        className="text-amber-400 hover:underline cursor-pointer font-medium"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePackage(pkg.packageId)}
+                        className="text-rose-400 hover:underline cursor-pointer font-medium"
+                      >
+                        Remove ✕
+                      </button>
+                    </div>
                   </div>
                 ))}
+              </div>
+            ) : (
+              <div className="text-[11px] text-slate-400 italic bg-white/[0.02] p-2 rounded-xl">
+                ✓ Koi custom package nahi hai — ye product direct base unit ({newProduct.unit || 'kg'}) aur base price (₹{newProduct.price || 0}) me sell hoga.
               </div>
             )}
           </div>

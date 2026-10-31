@@ -53,16 +53,27 @@ export default function CoinDeliveryStudioTab({ onToast }) {
     maxRadiusKm: 15,
     freeDeliveryMinOrder: 1500,
     slabs: [
-      { id: 1, maxKm: 2, charge: 0, label: "Khorma Local (Under 2 km)" },
-      { id: 2, maxKm: 5, charge: 40, label: "Pratappur Town (2 to 5 km)" },
-      { id: 3, maxKm: 10, charge: 70, label: "Outer Area (5 to 10 km)" },
-      { id: 4, maxKm: 15, charge: 120, label: "Far Suburbs (10 to 15 km)" }
+      { id: 1, maxKm: 2, charge: 20, minOrderForFree: 500, label: "Up to 2 km" },
+      { id: 2, maxKm: 5, charge: 40, minOrderForFree: 1000, label: "2 to 5 km" },
+      { id: 3, maxKm: 10, charge: 70, minOrderForFree: 1500, label: "5 to 10 km" },
+      { id: 4, maxKm: 15, charge: 120, minOrderForFree: 2000, label: "10 to 15 km" }
     ]
   };
 
-  const [deliveryConfig, setDeliveryConfig] = useState(storeSettings.deliveryDistanceConfig || defaultDelivery);
+  const [deliveryConfig, setDeliveryConfig] = useState(() => {
+    const cfg = storeSettings.deliveryDistanceConfig || defaultDelivery;
+    const slabs = (cfg.slabs && cfg.slabs.length > 0 ? cfg.slabs : defaultDelivery.slabs).map(s => ({
+      ...s,
+      maxKm: Number(s.maxKm),
+      charge: Number(s.charge),
+      minOrderForFree: s.minOrderForFree !== undefined ? Number(s.minOrderForFree) : (Number(s.maxKm) <= 2 ? 1500 : 0),
+      label: s.label || `Up to ${s.maxKm} km`
+    }));
+    return { ...cfg, slabs };
+  });
   const [newSlabMaxKm, setNewSlabMaxKm] = useState('');
   const [newSlabCharge, setNewSlabCharge] = useState('');
+  const [newSlabMinOrderForFree, setNewSlabMinOrderForFree] = useState('');
   const [newSlabLabel, setNewSlabLabel] = useState('');
 
   // Handle Save Coin Rules
@@ -94,16 +105,21 @@ export default function CoinDeliveryStudioTab({ onToast }) {
   // Add New Delivery Slab
   const handleAddSlab = () => {
     if (!newSlabMaxKm || newSlabCharge === '') return;
+    const kmNum = Number(newSlabMaxKm);
+    const chargeNum = Number(newSlabCharge);
+    const freeNum = newSlabMinOrderForFree !== '' ? Number(newSlabMinOrderForFree) : 0;
     const newSlab = {
       id: Date.now(),
-      maxKm: Number(newSlabMaxKm),
-      charge: Number(newSlabCharge),
-      label: newSlabLabel.trim() || `Up to ${newSlabMaxKm} km`
+      maxKm: kmNum,
+      charge: chargeNum,
+      minOrderForFree: freeNum,
+      label: newSlabLabel.trim() || `Up to ${kmNum} km`
     };
     const updatedSlabs = [...(deliveryConfig.slabs || []), newSlab].sort((a, b) => a.maxKm - b.maxKm);
     setDeliveryConfig({ ...deliveryConfig, slabs: updatedSlabs });
     setNewSlabMaxKm('');
     setNewSlabCharge('');
+    setNewSlabMinOrderForFree('');
     setNewSlabLabel('');
   };
 
@@ -331,36 +347,48 @@ export default function CoinDeliveryStudioTab({ onToast }) {
 
         {/* Existing Slabs Table */}
         <div className="space-y-3">
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-            Active Delivery Slabs & Rates
-          </h4>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                Active Delivery Slabs & Rates
+              </h4>
+              <p className="text-[11px] text-[#A5B4CC] mt-0.5">
+                Har KM slab ka distance, delivery charge, aur free delivery amount threshold aap yahan se direct control kar sakte hain.
+              </p>
+            </div>
+            <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20">
+              {(deliveryConfig.slabs || []).length} Active Slabs
+            </span>
+          </div>
 
           <div className="overflow-x-auto rounded-2xl border border-white/10">
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="bg-[#0A0E1E] text-slate-400 uppercase text-[10px]">
                 <tr>
-                  <th className="p-3">Distance Range (Up To)</th>
-                  <th className="p-3">Zone Description</th>
+                  <th className="p-3">Distance (KM)</th>
                   <th className="p-3">Delivery Charge (₹)</th>
+                  <th className="p-3">Free Delivery Order Min (₹)</th>
+                  <th className="p-3">Zone Description / Label</th>
                   <th className="p-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {(deliveryConfig.slabs || []).map((slab) => (
                   <tr key={slab.id} className="hover:bg-white/[0.02]">
-                    <td className="p-3 font-mono font-bold text-white">
-                      ≤ {slab.maxKm} km
-                    </td>
                     <td className="p-3">
-                      <input
-                        type="text"
-                        value={slab.label}
-                        onChange={e => {
-                          const updated = deliveryConfig.slabs.map(s => s.id === slab.id ? { ...s, label: e.target.value } : s);
-                          setDeliveryConfig({ ...deliveryConfig, slabs: updated });
-                        }}
-                        className="bg-black/30 border border-white/10 px-2 py-1 rounded text-xs text-slate-200 w-full max-w-xs"
-                      />
+                      <div className="flex items-center gap-1 font-mono font-bold text-white">
+                        <span>≤</span>
+                        <input
+                          type="number"
+                          value={slab.maxKm}
+                          onChange={e => {
+                            const updated = deliveryConfig.slabs.map(s => s.id === slab.id ? { ...s, maxKm: Number(e.target.value) } : s);
+                            setDeliveryConfig({ ...deliveryConfig, slabs: updated });
+                          }}
+                          className="w-16 bg-black/40 border border-white/10 px-2 py-1 rounded text-xs text-white font-bold"
+                        />
+                        <span>km</span>
+                      </div>
                     </td>
                     <td className="p-3">
                       <div className="flex items-center gap-1 font-mono font-bold text-emerald-400">
@@ -372,9 +400,39 @@ export default function CoinDeliveryStudioTab({ onToast }) {
                             const updated = deliveryConfig.slabs.map(s => s.id === slab.id ? { ...s, charge: Number(e.target.value) } : s);
                             setDeliveryConfig({ ...deliveryConfig, slabs: updated });
                           }}
-                          className="w-20 bg-black/30 border border-white/10 px-2 py-1 rounded text-xs text-emerald-400 font-bold"
+                          className="w-20 bg-black/40 border border-white/10 px-2 py-1 rounded text-xs text-emerald-400 font-bold"
                         />
                       </div>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-1 font-mono font-bold text-amber-300">
+                        <span>₹</span>
+                        <input
+                          type="number"
+                          placeholder="0 (No Free)"
+                          value={slab.minOrderForFree !== undefined ? slab.minOrderForFree : ''}
+                          onChange={e => {
+                            const val = e.target.value === '' ? 0 : Number(e.target.value);
+                            const updated = deliveryConfig.slabs.map(s => s.id === slab.id ? { ...s, minOrderForFree: val } : s);
+                            setDeliveryConfig({ ...deliveryConfig, slabs: updated });
+                          }}
+                          className="w-24 bg-black/40 border border-white/10 px-2 py-1 rounded text-xs text-amber-300 font-bold"
+                        />
+                      </div>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">
+                        {slab.minOrderForFree > 0 ? `₹${slab.minOrderForFree}+ par ₹0 FREE` : 'No Free Delivery'}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={slab.label || ''}
+                        onChange={e => {
+                          const updated = deliveryConfig.slabs.map(s => s.id === slab.id ? { ...s, label: e.target.value } : s);
+                          setDeliveryConfig({ ...deliveryConfig, slabs: updated });
+                        }}
+                        className="bg-black/30 border border-white/10 px-2 py-1 rounded text-xs text-slate-200 w-full max-w-xs"
+                      />
                     </td>
                     <td className="p-3 text-right">
                       <button
@@ -395,28 +453,47 @@ export default function CoinDeliveryStudioTab({ onToast }) {
         {/* Add New Slab Form */}
         <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
           <p className="text-[11px] font-bold text-emerald-300 uppercase">+ Add New KM Distance Slab:</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <input
-              type="number"
-              placeholder="Up to KM (e.g. 7)"
-              value={newSlabMaxKm}
-              onChange={e => setNewSlabMaxKm(e.target.value)}
-              className="px-3.5 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
-            />
-            <input
-              type="number"
-              placeholder="Charge ₹ (e.g. 60)"
-              value={newSlabCharge}
-              onChange={e => setNewSlabCharge(e.target.value)}
-              className="px-3.5 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
-            />
-            <input
-              type="text"
-              placeholder="Label (e.g. Outer Pratappur 5-7 km)"
-              value={newSlabLabel}
-              onChange={e => setNewSlabLabel(e.target.value)}
-              className="px-3.5 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-[10px] text-slate-400 font-bold mb-1">Max Distance (KM) *</label>
+              <input
+                type="number"
+                placeholder="e.g. 7"
+                value={newSlabMaxKm}
+                onChange={e => setNewSlabMaxKm(e.target.value)}
+                className="w-full px-3.5 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-400 font-bold mb-1">Delivery Charge (₹) *</label>
+              <input
+                type="number"
+                placeholder="e.g. 60"
+                value={newSlabCharge}
+                onChange={e => setNewSlabCharge(e.target.value)}
+                className="w-full px-3.5 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-400 font-bold mb-1">Free Delivery Min Order (₹)</label>
+              <input
+                type="number"
+                placeholder="e.g. 1500 (0 = No Free)"
+                value={newSlabMinOrderForFree}
+                onChange={e => setNewSlabMinOrderForFree(e.target.value)}
+                className="w-full px-3.5 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-400 font-bold mb-1">Zone Label (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. Up to 7 km"
+                value={newSlabLabel}
+                onChange={e => setNewSlabLabel(e.target.value)}
+                className="w-full px-3.5 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
+              />
+            </div>
           </div>
           <button
             onClick={handleAddSlab}

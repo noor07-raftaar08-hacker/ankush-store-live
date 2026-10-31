@@ -40,9 +40,16 @@ function PackageSelectionModal() {
   // Reset selected package & count when opening a new product
   useEffect(() => {
     if (activePackageModalProduct) {
-      const pkgs = Array.isArray(activePackageModalProduct.packages) && activePackageModalProduct.packages.length > 0
+      const pkgs = (Array.isArray(activePackageModalProduct.packages) && activePackageModalProduct.packages.length > 0)
         ? activePackageModalProduct.packages
-        : [];
+        : [{
+            packageId: `${activePackageModalProduct.id}-default`,
+            packageName: `Standard Pack (1 ${activePackageModalProduct.unit || 'unit'})`,
+            weight: activePackageModalProduct.unit ? `1 ${activePackageModalProduct.unit}` : 'Standard',
+            price: activePackageModalProduct.price || 0,
+            stockStatus: activePackageModalProduct.stockStatus || 'Full Stock',
+            isAvailable: true
+          }];
       const firstAvailable = pkgs.find(p => p.stockStatus !== 'Out of Stock') || pkgs[0];
       setSelectedPkgId(firstAvailable?.packageId || null);
       setPacketCount(1);
@@ -52,7 +59,16 @@ function PackageSelectionModal() {
   if (!activePackageModalProduct) return null;
 
   const product = activePackageModalProduct;
-  const packages = Array.isArray(product.packages) && product.packages.length > 0 ? product.packages : [];
+  const packages = (Array.isArray(product.packages) && product.packages.length > 0)
+    ? product.packages
+    : [{
+        packageId: `${product.id}-default`,
+        packageName: `Standard Pack (1 ${product.unit || 'unit'})`,
+        weight: product.unit ? `1 ${product.unit}` : 'Standard',
+        price: product.price || 0,
+        stockStatus: product.stockStatus || 'Full Stock',
+        isAvailable: true
+      }];
   const currentPkg = packages.find(p => p.packageId === selectedPkgId) || packages[0];
 
   const previewCalc = calculateItemOfferDetails(
@@ -193,26 +209,26 @@ function CartAndCheckoutModals() {
   const {
     cartItems, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart, clearCart,
     rawSubtotalPrice, totalProductDiscount, totalPrice, totalItems, deliveryCharge, finalAmount, totalSavings,
-    isMinOrderMet, isDistanceEligible, amountNeededForMinOrder, amountNeededForFreeDelivery,
+    isMinOrderMet, isDistanceEligible, isFreeDeliveryApplied, amountNeededForMinOrder, amountNeededForFreeDelivery,
     customerDistanceKm, setCustomerDistanceKm, distanceZoneLabel, setDistanceZoneLabel,
     paymentMethod, setPaymentMethod, customerName, setCustomerName, customerPhone, setCustomerPhone,
     customerAddress, setCustomerAddress, isCheckoutOpen, setIsCheckoutOpen,
     isReceiptOpen, setIsReceiptOpen, lastOrder, setLastOrder,
     currentUser, useCoins, setUseCoins, coinsDiscount, coinsEarnedOnOrder,
-    addOrder
+    addOrder, storeSettings
   } = useStore();
 
   const [error, setError] = useState('');
   const [detectingGps, setDetectingGps] = useState(false);
   const [customerCoords, setCustomerCoords] = useState(null);
 
-  const canOrder = isMinOrderMet && isDistanceEligible;
+  const canOrder = isMinOrderMet && (customerDistanceKm !== null ? isDistanceEligible : true);
   const upiUri = `upi://pay?pa=${SHOP_UPI_ID}&pn=Ankush%20General%20Store&am=${finalAmount}&cu=INR`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUri)}`;
 
   const handleDetectLocationDistance = () => {
     if (!navigator.geolocation) {
-      setError('Browser me GPS support nahi hai. Kripya list se area chunein.');
+      setError('Browser me GPS support nahi hai. Kripya niche diye gaye list se distance chunein.');
       return;
     }
     setDetectingGps(true);
@@ -227,21 +243,36 @@ function CartAndCheckoutModals() {
           Math.sin(dLat / 2) ** 2 +
           Math.cos((STORE_COORDS.lat * Math.PI) / 180) * Math.cos((latitude * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
         const calcDist = Number((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1));
-        setCustomerDistanceKm(calcDist);
-        setDistanceZoneLabel(`GPS Live (${calcDist} km)`);
+        const slabs = storeSettings?.deliveryDistanceConfig?.slabs || [];
+        const sorted = [...slabs].sort((x, y) => Number(x.maxKm) - Number(y.maxKm));
+        const matched = sorted.find(s => calcDist <= Number(s.maxKm)) || sorted[sorted.length - 1];
+        setCustomerDistanceKm(matched ? matched.maxKm : calcDist);
+        setDistanceZoneLabel(matched?.label || `Up to ${calcDist} km`);
         setDetectingGps(false);
+        setError('');
       },
       () => {
         setDetectingGps(false);
-        setError('GPS permission allow nahi hui. List se area chunein.');
+        setError('GPS permission allow nahi hui. Kripya niche diye gaye list se distance chunein.');
       }
     );
   };
 
   const handlePlaceOrder = async () => {
-    if (!canOrder) return;
     if (!customerName.trim() || !customerPhone.trim() || !customerAddress.trim()) {
-      setError('Kripya Naam, Phone aur Address bharein.');
+      setError('Kripya Apna Naam, Phone Number aur Delivery Address bharein.');
+      return;
+    }
+    if (customerDistanceKm === null || customerDistanceKm === undefined) {
+      setError('⚠️ Kripya niche diye gaye options me se apna Delivery Distance (KM) select karein — ye zaroori hai!');
+      return;
+    }
+    if (!isDistanceEligible) {
+      setError(`Delivery radius limit maximum ${storeSettings?.deliveryDistanceConfig?.maxRadiusKm || 15} km tak hai.`);
+      return;
+    }
+    if (!isMinOrderMet) {
+      setError('Minimum order amount ₹700 hona zaroori hai.');
       return;
     }
     const created = await addOrder({
@@ -345,7 +376,18 @@ function CartAndCheckoutModals() {
                     {totalProductDiscount > 0 && (
                       <div className="flex justify-between text-pink-600 font-bold"><span>Offer Discount</span><span>-₹{totalProductDiscount.toFixed(2)}</span></div>
                     )}
-                    <div className="flex justify-between"><span>Delivery (Under 2km)</span><span>{deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge}`}</span></div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span>Delivery Charge {distanceZoneLabel ? `(${distanceZoneLabel})` : ''}</span>
+                      <span>
+                        {customerDistanceKm === null ? (
+                          <span className="text-slate-400 font-medium">Select KM at checkout</span>
+                        ) : deliveryCharge === 0 ? (
+                          <span className="text-emerald-700 font-black">FREE (₹0) 🎉</span>
+                        ) : (
+                          <span className="font-bold">₹{deliveryCharge}</span>
+                        )}
+                      </span>
+                    </div>
                     {currentUser && currentUser.coins > 0 && (
                       <div className="flex items-center justify-between py-1 bg-amber-50 px-2 rounded-lg border border-amber-200">
                         <label className="flex items-center gap-1.5 cursor-pointer text-amber-950 font-bold text-[11px]">
@@ -390,60 +432,23 @@ function CartAndCheckoutModals() {
               className="bg-white rounded-t-3xl sm:rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-5 space-y-4 shadow-2xl"
             >
               <div className="flex items-center justify-between border-b pb-3">
-                <h3 className="font-extrabold text-base text-slate-900">Checkout & Delivery</h3>
+                <h3 className="font-extrabold text-base text-slate-900">Checkout & Delivery Details</h3>
                 <button onClick={() => setIsCheckoutOpen(false)} className="text-slate-500 font-bold cursor-pointer">✕</button>
               </div>
 
-              {error && <div className="bg-red-50 text-red-700 text-xs font-bold p-3 rounded-xl">{error}</div>}
-
-              {/* Distance Verification */}
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold text-emerald-950">📍 Distance from Khorma Store</span>
-                  <button
-                    type="button"
-                    onClick={handleDetectLocationDistance}
-                    className="bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg cursor-pointer"
-                  >
-                    {detectingGps ? 'Detecting...' : 'Detect GPS'}
-                  </button>
-                </div>
-                <div className="grid grid-cols-3 gap-2 pt-1 text-xs font-bold">
-                  {[
-                    { label: 'Khorma Local', dist: 0.8 },
-                    { label: 'Pratappur Bazaar', dist: 1.8 },
-                    { label: 'Surrounding Area', dist: 2.8 }
-                  ].map(z => (
-                    <button
-                      key={z.label}
-                      type="button"
-                      onClick={() => {
-                        setCustomerDistanceKm(z.dist);
-                        setDistanceZoneLabel(`${z.label} (${z.dist} km)`);
-                      }}
-                      className={`p-2 rounded-xl border text-center transition-all ${
-                        customerDistanceKm === z.dist
-                          ? 'border-emerald-600 bg-emerald-600 text-white'
-                          : 'border-slate-200 bg-white text-slate-700'
-                      }`}
-                    >
-                      {z.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {error && <div className="bg-red-50 text-red-700 text-xs font-bold p-3 rounded-xl border border-red-200">{error}</div>}
 
               {/* Customer Inputs */}
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Customer Full Name *</label>
                   <input
                     type="text"
                     required
                     placeholder="Enter customer name"
                     value={customerName}
-                    onChange={e => setCustomerName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-900"
+                    onChange={e => { setCustomerName(e.target.value); setError(''); }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-900 outline-none focus:border-emerald-500"
                   />
                 </div>
                 <div>
@@ -453,20 +458,137 @@ function CartAndCheckoutModals() {
                     required
                     placeholder="10-digit phone number"
                     value={customerPhone}
-                    onChange={e => setCustomerPhone(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-900"
+                    onChange={e => { setCustomerPhone(e.target.value); setError(''); }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-900 outline-none focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Delivery Address *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Delivery Address (House No, Mohalla, Landmark) *</label>
                   <textarea
                     rows={2}
                     required
                     placeholder="Ghar ka pata, gali number, landmark"
                     value={customerAddress}
-                    onChange={e => setCustomerAddress(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-900"
+                    onChange={e => { setCustomerAddress(e.target.value); setError(''); }}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-none focus:border-emerald-500"
                   />
+                </div>
+
+                {/* Delivery Distance (KM) Selection - DYNAMIC & COMPULSORY */}
+                <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                      <span>📍</span>
+                      <span>Delivery Distance (KM) *</span>
+                      <span className="text-[10px] text-rose-600 font-bold">(Compulsory)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleDetectLocationDistance}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer flex items-center gap-1 transition-colors"
+                    >
+                      <span>🛰️</span>
+                      <span>{detectingGps ? 'Detecting GPS...' : 'Detect GPS'}</span>
+                    </button>
+                  </div>
+
+                  {/* Dynamic Admin Distance Slabs */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {(storeSettings?.deliveryDistanceConfig?.slabs || []).map((slab) => {
+                      const isSelected = customerDistanceKm === slab.maxKm;
+                      const isFree = slab.minOrderForFree > 0 && totalPrice >= slab.minOrderForFree;
+                      return (
+                        <div
+                          key={slab.id}
+                          onClick={() => {
+                            setCustomerDistanceKm(slab.maxKm);
+                            setDistanceZoneLabel(slab.label || `Up to ${slab.maxKm} km`);
+                            setError('');
+                          }}
+                          className={`p-2.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? 'border-emerald-600 bg-emerald-100/70 shadow-xs ring-2 ring-emerald-500/20'
+                              : 'border-slate-200 hover:border-emerald-300 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-xs text-slate-900">
+                              Up to {slab.maxKm} km
+                            </span>
+                            {isSelected && <span className="text-emerald-700 font-black text-xs">✓ Selected</span>}
+                          </div>
+
+                          <p className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
+                            {slab.label || `${slab.maxKm} km zone`}
+                          </p>
+
+                          <div className="mt-1.5 flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                            <span className="text-[10px] text-slate-500 font-bold">Charge:</span>
+                            {isFree ? (
+                              <span className="text-emerald-700 font-black text-xs bg-emerald-100 px-1.5 py-0.5 rounded">
+                                FREE (₹0) 🎉
+                              </span>
+                            ) : (
+                              <span className="font-black text-slate-900">₹{slab.charge}</span>
+                            )}
+                          </div>
+
+                          {slab.minOrderForFree > 0 && !isFree && (
+                            <p className="text-[9px] text-amber-700 font-bold mt-0.5">
+                              Free on ₹{slab.minOrderForFree}+ order
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {customerDistanceKm === null ? (
+                    <p className="text-[10px] text-rose-500 font-bold">
+                      ⚠️ Kripya upar diye gaye km slabs me se apna delivery distance chunein.
+                    </p>
+                  ) : (
+                    <div className="flex items-center justify-between text-[11px] font-bold text-emerald-800 bg-emerald-100/70 px-2.5 py-1 rounded-xl">
+                      <span>Selected Zone: {distanceZoneLabel || `Up to ${customerDistanceKm} km`}</span>
+                      <span>{deliveryCharge === 0 ? 'FREE DELIVERY (₹0) 🎉' : `₹${deliveryCharge} Delivery`}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Itemized Bill Summary */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1.5">
+                <div className="flex justify-between text-slate-600">
+                  <span>Items Subtotal:</span>
+                  <span className="font-bold">₹{totalPrice.toFixed(0)}</span>
+                </div>
+                {totalProductDiscount > 0 && (
+                  <div className="flex justify-between text-pink-600 font-bold">
+                    <span>Special Offer Discount:</span>
+                    <span>-₹{totalProductDiscount.toFixed(0)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-slate-600">
+                  <span>Delivery ({distanceZoneLabel || (customerDistanceKm ? `${customerDistanceKm} km` : 'Not selected')}):</span>
+                  <span className="font-bold tabular-nums">
+                    {customerDistanceKm === null ? (
+                      <span className="text-rose-500 font-bold">Select distance above</span>
+                    ) : deliveryCharge === 0 ? (
+                      <span className="text-emerald-600 font-black">FREE (₹0) 🎉</span>
+                    ) : (
+                      `₹${deliveryCharge}`
+                    )}
+                  </span>
+                </div>
+                {coinsDiscount > 0 && (
+                  <div className="flex justify-between text-amber-600 font-medium">
+                    <span>VIP Coins Redeemed:</span>
+                    <span className="font-bold">-₹{coinsDiscount.toFixed(0)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-black text-slate-900 border-t border-slate-200 pt-1.5">
+                  <span>Total Payable:</span>
+                  <span className="text-emerald-700 text-base">₹{finalAmount.toFixed(0)}</span>
                 </div>
               </div>
 
@@ -500,13 +622,17 @@ function CartAndCheckoutModals() {
               )}
 
               <button
-                disabled={!canOrder}
+                disabled={!isMinOrderMet}
                 onClick={handlePlaceOrder}
-                className={`w-full py-3.5 rounded-2xl font-extrabold text-white shadow-lg ${
-                  canOrder ? 'bg-emerald-600 hover:bg-emerald-500 cursor-pointer' : 'bg-slate-300 cursor-not-allowed'
+                className={`w-full py-3.5 rounded-2xl font-extrabold text-white shadow-lg transition-all ${
+                  isMinOrderMet ? 'bg-emerald-600 hover:bg-emerald-500 cursor-pointer shadow-emerald-600/30' : 'bg-slate-300 cursor-not-allowed'
                 }`}
               >
-                {canOrder ? `Confirm Order (₹${finalAmount.toFixed(0)}) & Send to WhatsApp` : 'Delivery Not Eligible'}
+                {!isMinOrderMet
+                  ? 'Min Order ₹700 Required'
+                  : customerDistanceKm === null
+                    ? '⚠️ Select Delivery Distance Above (KM) *'
+                    : `Confirm Order (₹${finalAmount.toFixed(0)}) & Send to WhatsApp`}
               </button>
             </motion.div>
           </div>

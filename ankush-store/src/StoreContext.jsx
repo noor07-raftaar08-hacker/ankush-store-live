@@ -402,10 +402,10 @@ const defaultStoreSettings = {
     maxRadiusKm: 15,
     freeDeliveryMinOrder: 1500,
     slabs: [
-      { id: 1, maxKm: 2, charge: 0, label: "Khorma Local (Under 2 km)" },
-      { id: 2, maxKm: 5, charge: 40, label: "Pratappur Town (2 to 5 km)" },
-      { id: 3, maxKm: 10, charge: 70, label: "Outer Area (5 to 10 km)" },
-      { id: 4, maxKm: 15, charge: 120, label: "Far Suburbs (10 to 15 km)" }
+      { id: 1, maxKm: 2, charge: 20, minOrderForFree: 500, label: "Up to 2 km" },
+      { id: 2, maxKm: 5, charge: 40, minOrderForFree: 1000, label: "2 to 5 km" },
+      { id: 3, maxKm: 10, charge: 70, minOrderForFree: 1500, label: "5 to 10 km" },
+      { id: 4, maxKm: 15, charge: 120, minOrderForFree: 2000, label: "10 to 15 km" }
     ]
   }
 };
@@ -596,9 +596,9 @@ export function StoreProvider({ children }) {
     const basePrice = Number(prodData.price) || 0;
     const newId = Date.now();
     const unitVal = prodData.unit || 'kg';
-    const customPackages = Array.isArray(prodData.packages) && prodData.packages.length > 0
+    const customPackages = Array.isArray(prodData.packages)
       ? prodData.packages
-      : createDefaultPackagesForProduct({ ...prodData, id: newId, price: basePrice, unit: unitVal });
+      : [];
 
     const newProd = {
       ...prodData,
@@ -654,7 +654,7 @@ export function StoreProvider({ children }) {
           }))
         } : p.discountConfig;
 
-        const nextPackages = (updatedFields.packages && updatedFields.packages.length > 0)
+        const nextPackages = Array.isArray(updatedFields.packages)
           ? updatedFields.packages
           : (p.packages || []).map(pk => {
               if (pk.weight === '1 kg' || pk.weight === `1 ${nextUnit}`) {
@@ -999,8 +999,8 @@ export function StoreProvider({ children }) {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
-  const [customerDistanceKm, setCustomerDistanceKm] = useState(1.2);
-  const [distanceZoneLabel, setDistanceZoneLabel] = useState('Khorma / Pratappur Town (Under 2 km)');
+  const [customerDistanceKm, setCustomerDistanceKm] = useState(null);
+  const [distanceZoneLabel, setDistanceZoneLabel] = useState('');
   const [useCoins, setUseCoins] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
@@ -1245,31 +1245,43 @@ export function StoreProvider({ children }) {
   const totalPrice = Math.max(0, rawSubtotalPrice - totalProductDiscount);
   const totalMRP = detailedCartItems.reduce((sum, item) => sum + (item.mrp || Math.round(item.price * 1.15)) * item.quantity, 0);
 
-  const isDistanceEligible = customerDistanceKm <= (storeSettings.deliveryDistanceConfig?.maxRadiusKm || 15.0);
-  const isWithinFreeDeliveryRange = customerDistanceKm <= 2.0;
+  // Dynamic Delivery Slab Matcher based on admin-defined KM slabs
+  const matchedDeliverySlab = useMemo(() => {
+    if (customerDistanceKm === null || customerDistanceKm === undefined) return null;
+    const slabs = storeSettings.deliveryDistanceConfig?.slabs || [];
+    if (slabs.length === 0) return null;
+    const sorted = [...slabs].sort((a, b) => Number(a.maxKm) - Number(b.maxKm));
+    return sorted.find(s => customerDistanceKm <= Number(s.maxKm)) || sorted[sorted.length - 1];
+  }, [customerDistanceKm, storeSettings.deliveryDistanceConfig]);
+
+  // Dynamic Free Delivery verification per matched slab
+  const isFreeDeliveryApplied = useMemo(() => {
+    if (totalPrice === 0 || !matchedDeliverySlab) return false;
+    const minFree = Number(matchedDeliverySlab.minOrderForFree);
+    return minFree > 0 && totalPrice >= minFree;
+  }, [totalPrice, matchedDeliverySlab]);
+
+  const isDistanceEligible = customerDistanceKm !== null && customerDistanceKm <= (Number(storeSettings.deliveryDistanceConfig?.maxRadiusKm) || 15.0);
+  const isWithinFreeDeliveryRange = isFreeDeliveryApplied;
   const isMinOrderMet = totalPrice >= 700;
 
   const deliveryCharge = useMemo(() => {
-    if (totalPrice === 0) return 0;
-    const freeMin = storeSettings.deliveryDistanceConfig?.freeDeliveryMinOrder || 1500;
-    if (totalPrice >= freeMin && customerDistanceKm <= 2.0) return 0;
-    const slabs = storeSettings.deliveryDistanceConfig?.slabs || [
-      { maxKm: 2, charge: 0 },
-      { maxKm: 5, charge: 40 },
-      { maxKm: 10, charge: 70 },
-      { maxKm: 15, charge: 120 }
-    ];
-    const match = slabs.find(s => customerDistanceKm <= s.maxKm);
-    return match !== undefined ? match.charge : 40;
-  }, [totalPrice, customerDistanceKm, storeSettings.deliveryDistanceConfig]);
+    if (totalPrice === 0 || !matchedDeliverySlab) return 0;
+    if (isFreeDeliveryApplied) return 0;
+    return Number(matchedDeliverySlab.charge) || 0;
+  }, [totalPrice, matchedDeliverySlab, isFreeDeliveryApplied]);
 
   const amountNeededForMinOrder = Math.max(0, 700 - totalPrice);
-  const amountNeededForFreeDelivery = Math.max(0, (storeSettings.deliveryDistanceConfig?.freeDeliveryMinOrder || 1500) - totalPrice);
+  const amountNeededForFreeDelivery = useMemo(() => {
+    const targetSlab = matchedDeliverySlab || (storeSettings.deliveryDistanceConfig?.slabs?.[0]);
+    const minFree = targetSlab ? Number(targetSlab.minOrderForFree) : Number(storeSettings.deliveryDistanceConfig?.freeDeliveryMinOrder) || 1500;
+    return minFree > 0 ? Math.max(0, minFree - totalPrice) : 0;
+  }, [totalPrice, matchedDeliverySlab, storeSettings.deliveryDistanceConfig]);
 
   const availableCoins = currentUser ? currentUser.coins : 0;
   const coinsDiscount = (currentUser && useCoins) ? Math.min(availableCoins, Math.floor(totalPrice * 0.5)) : 0;
   const finalAmount = Math.max(0, totalPrice + deliveryCharge - coinsDiscount);
-  const totalSavings = (totalMRP - rawSubtotalPrice) + totalProductDiscount + (deliveryCharge === 0 && totalPrice >= 1500 ? 30 : 0) + coinsDiscount;
+  const totalSavings = (totalMRP - rawSubtotalPrice) + totalProductDiscount + (isFreeDeliveryApplied ? (matchedDeliverySlab?.charge || 30) : 0) + coinsDiscount;
 
   const isCoinEarningActive = storeSettings.coinRules?.isEnabled !== false;
   const spendPerCoin = Number(storeSettings.coinRules?.spendPerCoin) || 100;
@@ -1297,8 +1309,9 @@ export function StoreProvider({ children }) {
       rawSubtotal: rawSubtotalPrice,
       totalDiscount: totalProductDiscount,
       distanceKm: customerDistanceKm,
-      distanceZoneLabel,
-      isFreeDeliveryApplied: deliveryCharge === 0 && totalPrice >= 1500,
+      distanceZoneLabel: distanceZoneLabel || (customerDistanceKm ? `Up to ${customerDistanceKm} km` : 'Selected Zone'),
+      deliveryCharge: deliveryCharge,
+      isFreeDeliveryApplied: isFreeDeliveryApplied || deliveryCharge === 0,
       advancePaid: orderData.paymentMethod === 'cash' ? 0 : finalAmount,
       balanceDue: orderData.paymentMethod === 'cash' ? finalAmount : 0
     };
@@ -1348,13 +1361,13 @@ export function StoreProvider({ children }) {
       `*Customer:* ${newOrder.customerName}\n` +
       `*Phone:* ${newOrder.customerPhone}\n` +
       `*Address:* ${newOrder.customerAddress}\n` +
-      `*Distance:* ${customerDistanceKm} km (${distanceZoneLabel})\n` +
+      `*Delivery Distance:* ${distanceZoneLabel || (customerDistanceKm ? `${customerDistanceKm} km` : 'Selected Zone')}\n` +
       `*Live GPS Route:* ${googleMapsUrl}\n\n` +
       `*Items Ordered:*\n${itemsList}\n\n` +
       `*Product Total:* ₹${rawSubtotalPrice}\n` +
       `${totalProductDiscount > 0 ? `*Offer Discount:* -₹${totalProductDiscount}\n` : ''}` +
       `*Eligible Amount:* ₹${newOrder.totalAmount}\n` +
-      `*Delivery Charge:* ${newOrder.deliveryCharge === 0 ? 'FREE (₹0)' : '₹' + newOrder.deliveryCharge}\n` +
+      `*Delivery Charge:* ${newOrder.deliveryCharge === 0 ? 'FREE (₹0) 🎉' : '₹' + newOrder.deliveryCharge}\n` +
       `${newOrder.coinsUsed > 0 ? `*Loyalty Coins Used:* -₹${newOrder.coinsUsed}\n` : ''}` +
       `*Final Payable Amount:* ₹${newOrder.finalAmount}\n` +
       `*Payment Mode:* ${paymentNote}`;
@@ -1589,7 +1602,7 @@ export function StoreProvider({ children }) {
       }).reduce((s, o) => s + (Number(o?.finalAmount) || 0), 0) : 0),
       cartItems: detailedCartItems, addToCart, removeFromCart, updateQuantity, clearCart, repeatLastOrder,
       totalItems, rawSubtotalPrice, totalProductDiscount, totalPrice, deliveryCharge, finalAmount, totalSavings,
-      isMinOrderMet, isDistanceEligible, isWithinFreeDeliveryRange,
+      isMinOrderMet, isDistanceEligible, isWithinFreeDeliveryRange, matchedDeliverySlab, isFreeDeliveryApplied,
       amountNeededForMinOrder, amountNeededForFreeDelivery,
       customerDistanceKm, setCustomerDistanceKm, distanceZoneLabel, setDistanceZoneLabel,
       useCoins, setUseCoins, coinsDiscount, coinsEarnedOnOrder, cartBounce,
