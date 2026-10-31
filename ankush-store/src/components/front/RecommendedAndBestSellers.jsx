@@ -42,8 +42,15 @@ export default function RecommendedAndBestSellers({ onInspectProduct }) {
 
             <button
               onClick={() => {
-                const el = document.getElementById('main-products-catalog');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
+                const elements = document.querySelectorAll('#main-products-catalog');
+                for (const el of elements) {
+                  if (el.offsetParent !== null || el.getClientRects().length > 0) {
+                    el.scrollIntoView({ behavior: 'smooth' });
+                    return;
+                  }
+                }
+                const fallback = document.getElementById('main-products-catalog');
+                if (fallback) fallback.scrollIntoView({ behavior: 'smooth' });
               }}
               className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors cursor-pointer flex items-center gap-1 group"
             >
@@ -187,8 +194,15 @@ export default function RecommendedAndBestSellers({ onInspectProduct }) {
             </h2>
             <button
               onClick={() => {
-                const el = document.getElementById('main-products-catalog');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
+                const elements = document.querySelectorAll('#main-products-catalog');
+                for (const el of elements) {
+                  if (el.offsetParent !== null || el.getClientRects().length > 0) {
+                    el.scrollIntoView({ behavior: 'smooth' });
+                    return;
+                  }
+                }
+                const fallback = document.getElementById('main-products-catalog');
+                if (fallback) fallback.scrollIntoView({ behavior: 'smooth' });
               }}
               className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors cursor-pointer flex items-center gap-1 group"
             >

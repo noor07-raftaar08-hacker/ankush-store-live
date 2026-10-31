@@ -10,10 +10,15 @@ export default function FreshFooter({ onOpenTrackOrder, onSelectCategory }) {
     if (onSelectCategory) {
       onSelectCategory(catName);
     }
-    const el = document.getElementById('main-products-catalog');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
+    const elements = document.querySelectorAll('#main-products-catalog');
+    for (const el of elements) {
+      if (el.offsetParent !== null || el.getClientRects().length > 0) {
+        el.scrollIntoView({ behavior: 'smooth' });
+        return;
+      }
     }
+    const fallback = document.getElementById('main-products-catalog');
+    if (fallback) fallback.scrollIntoView({ behavior: 'smooth' });
   };
 
   const activeCategories = storeCategories

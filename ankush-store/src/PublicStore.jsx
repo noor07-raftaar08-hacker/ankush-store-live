@@ -646,6 +646,7 @@ export default function PublicStore() {
           selectedCategory={selectedCategory}
           onCategoryChange={setSelectedCategory}
           onInspectProduct={prod => setActivePackageModalProduct(prod)}
+          onOpenTrackOrder={() => setTrackOrderOpen(true)}
         />
       </div>
 

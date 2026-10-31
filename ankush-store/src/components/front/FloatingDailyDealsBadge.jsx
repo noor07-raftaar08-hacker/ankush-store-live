@@ -21,10 +21,15 @@ export default function FloatingDailyDealsBadge() {
   }, [dailyDealsConfig?.hours, dailyDealsConfig?.minutes]);
 
   const scrollToDeals = () => {
-    const el = document.getElementById('daily-deals-section');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
+    const elements = document.querySelectorAll('#daily-deals-section');
+    for (const el of elements) {
+      if (el.offsetParent !== null || el.getClientRects().length > 0) {
+        el.scrollIntoView({ behavior: 'smooth' });
+        return;
+      }
     }
+    const fallback = document.getElementById('daily-deals-section');
+    if (fallback) fallback.scrollIntoView({ behavior: 'smooth' });
   };
 
   if (!isVisible) return null;

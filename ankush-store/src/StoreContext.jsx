@@ -15,6 +15,16 @@ export const SHOP_UPI_ID = "8817425506@axl";
 export const STORE_ADDRESS_TEXT = "Khorma, Pratappur, District Surajpur";
 export const STORE_COORDS = { lat: 23.4865, lng: 83.2085 };
 
+export const getApiBaseUrl = () => {
+  if (typeof window === 'undefined') return 'http://localhost:5000';
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (window.location.port === '5173' || window.location.port === '3000') {
+    return `http://${window.location.hostname}:5000`;
+  }
+  return '';
+};
+export const API_BASE_URL = getApiBaseUrl();
+
 export const OFFER_COLOR_THEMES = {
   'royal-purple': {
     id: 'royal-purple',
@@ -399,7 +409,7 @@ export function StoreProvider({ children }) {
   });
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/settings')
+    fetch(`${API_BASE_URL}/api/settings`)
       .then(r => r.json())
       .then(data => {
         if (data.success && data.settings) {
@@ -416,7 +426,7 @@ export function StoreProvider({ children }) {
     setStoreSettings(updated);
     localStorage.setItem('ankush_store_settings', JSON.stringify(updated));
     try {
-      await fetch('http://localhost:5000/api/settings', {
+      await fetch(`${API_BASE_URL}/api/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
@@ -462,7 +472,7 @@ export function StoreProvider({ children }) {
   });
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/products/sync', {
+    fetch(`${API_BASE_URL}/api/products/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ products })
@@ -514,7 +524,7 @@ export function StoreProvider({ children }) {
     const updated = [newProd, ...products];
     saveProductsList(updated);
 
-    fetch('http://localhost:5000/api/products', {
+    fetch(`${API_BASE_URL}/api/products`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newProd)
@@ -551,7 +561,7 @@ export function StoreProvider({ children }) {
 
     const target = updated.find(p => p.id === productId);
     if (target) {
-      fetch(`http://localhost:5000/api/products/${productId}`, {
+      fetch(`${API_BASE_URL}/api/products/${productId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(target)
@@ -562,13 +572,13 @@ export function StoreProvider({ children }) {
   const deleteProduct = (productId) => {
     const updated = products.filter(p => p.id !== productId);
     saveProductsList(updated);
-    fetch(`http://localhost:5000/api/products/${productId}`, { method: 'DELETE' }).catch(() => {});
+    fetch(`${API_BASE_URL}/api/products/${productId}`, { method: 'DELETE' }).catch(() => {});
   };
 
   const updateProductDiscount = (productId, discountConfig) => {
     const updated = products.map(p => (p.id === productId ? { ...p, discountConfig: { ...discountConfig, productUnit: p.unit } } : p));
     saveProductsList(updated);
-    fetch(`http://localhost:5000/api/products/${productId}/discount`, {
+    fetch(`${API_BASE_URL}/api/products/${productId}/discount`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ discountConfig })
@@ -638,7 +648,7 @@ export function StoreProvider({ children }) {
   };
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/customers/sync', {
+    fetch(`${API_BASE_URL}/api/customers/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ customers })
@@ -695,7 +705,7 @@ export function StoreProvider({ children }) {
     };
 
     try {
-      const res = await fetch('http://localhost:5000/api/customers/register', {
+      const res = await fetch(`${API_BASE_URL}/api/customers/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, phone, pin, address })
@@ -707,6 +717,9 @@ export function StoreProvider({ children }) {
         triggerCoinFlyAnimation(20, "Welcome Bonus +20 Gold Coins Credited!");
         return { success: true, user: data.user };
       }
+      if (!data.success && data.message) {
+        return { success: false, message: data.message };
+      }
     } catch (e) {}
 
     const updated = [newCustomer, ...customers];
@@ -717,7 +730,7 @@ export function StoreProvider({ children }) {
 
   const loginCustomer = async (phone, pin) => {
     try {
-      const res = await fetch('http://localhost:5000/api/customers/login', {
+      const res = await fetch(`${API_BASE_URL}/api/customers/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, pin })
@@ -726,7 +739,11 @@ export function StoreProvider({ children }) {
       if (data.success && data.user) {
         setCurrentUser(data.user);
         localStorage.setItem('ankush_current_user', JSON.stringify(data.user));
+        fetchOrders();
         return { success: true, user: data.user };
+      }
+      if (res.status === 401 || (data && data.success === false)) {
+        return { success: false, message: data.message || "Galat Mobile Number ya 4-Digit PIN!" };
       }
     } catch (e) {}
 
@@ -736,6 +753,7 @@ export function StoreProvider({ children }) {
     }
     setCurrentUser(found);
     localStorage.setItem('ankush_current_user', JSON.stringify(found));
+    fetchOrders();
     return { success: true, user: found };
   };
 
@@ -753,7 +771,7 @@ export function StoreProvider({ children }) {
 
     try {
       if (deltaCoins > 0 && !newPin) {
-        const res = await fetch(`http://localhost:5000/api/customers/${phone}/reward`, {
+        const res = await fetch(`${API_BASE_URL}/api/customers/${phone}/reward`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ amount: deltaCoins, message: rewardMsg })
@@ -823,7 +841,7 @@ export function StoreProvider({ children }) {
     saveCustomers(updatedList, updatedMe);
 
     try {
-      await fetch(`http://localhost:5000/api/customers/${phone}/acknowledge-reward`, { method: 'POST' });
+      await fetch(`${API_BASE_URL}/api/customers/${phone}/acknowledge-reward`, { method: 'POST' });
     } catch (e) {}
   };
 
@@ -832,7 +850,7 @@ export function StoreProvider({ children }) {
     const updatedCurr = currentUser && currentUser.phone === phone ? { ...currentUser, ...profileUpdates } : currentUser;
     saveCustomers(updated, updatedCurr);
     try {
-      await fetch(`http://localhost:5000/api/customers/${phone}`, {
+      await fetch(`${API_BASE_URL}/api/customers/${phone}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profileUpdates)
@@ -886,16 +904,21 @@ export function StoreProvider({ children }) {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const fetchOrders = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/orders`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setOrders(data);
+        localStorage.setItem('ankush_orders', JSON.stringify(data));
+      }
+    } catch (e) {}
+  };
+
   useEffect(() => {
-    fetch('http://localhost:5000/api/orders')
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setOrders(data);
-          localStorage.setItem('ankush_orders', JSON.stringify(data));
-        }
-      })
-      .catch(() => {});
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 12000);
+    return () => clearInterval(interval);
   }, []);
 
   // Offers State
@@ -1094,7 +1117,7 @@ export function StoreProvider({ children }) {
     };
 
     try {
-      const res = await fetch('http://localhost:5000/api/orders', {
+      const res = await fetch(`${API_BASE_URL}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newOrder)
@@ -1158,7 +1181,7 @@ export function StoreProvider({ children }) {
     setOrders(updated);
     localStorage.setItem('ankush_orders', JSON.stringify(updated));
 
-    fetch(`http://localhost:5000/api/orders/${orderId}`, {
+    fetch(`${API_BASE_URL}/api/orders/${orderId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: nextStatus })
@@ -1313,7 +1336,7 @@ export function StoreProvider({ children }) {
       customers, currentUser, registerCustomer, loginCustomer, logoutCustomer,
       updateCustomerData, acknowledgeCoinReward, updateCustomerProfile,
       offers, activeOffers: offers.filter(o => o.is_active), addOffer, toggleOffer, removeOffer,
-      orders, addOrder, confirmDelivery,
+      orders, addOrder, confirmDelivery, fetchOrders,
       getPendingOrders: () => orders.filter(o => o.status === 'pending' || o.status === 'processing' || o.status === 'packed'),
       getDeliveredOrders: () => orders.filter(o => o.status === 'delivered'),
       searchOrdersByName: (q) => (!q.trim() ? orders : orders.filter(o => o.customerName?.toLowerCase().includes(q.toLowerCase()) || o.id?.toLowerCase().includes(q.toLowerCase()))),

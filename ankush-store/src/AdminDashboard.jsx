@@ -31,7 +31,8 @@ import {
   ShieldCheck,
   Boxes,
   Search,
-  Menu
+  Menu,
+  X
 } from './components/Icons';
 
 // Exact Dashboard Themes matching User's Analytics Design System
@@ -404,6 +405,132 @@ export default function AdminDashboard() {
           </div>
         </div>
       </aside>
+
+      {/* =====================================================================
+          MOBILE SIDEBAR DRAWER (Sliding Navigation matching Portal Design)
+      ===================================================================== */}
+      <AnimatePresence>
+        {mobileDrawerOpen && (
+          <>
+            {/* Dark Frosted Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileDrawerOpen(false)}
+              className="fixed inset-0 bg-black/75 backdrop-blur-md z-40 lg:hidden"
+            />
+
+            {/* Slide-out Sidebar Panel */}
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 250 }}
+              className="fixed top-0 left-0 bottom-0 z-50 w-[300px] max-w-[85vw] p-3 sm:p-4 flex flex-col lg:hidden"
+            >
+              <div
+                style={{ backgroundColor: activeThemeObj.card }}
+                className="rounded-3xl p-4 h-full flex flex-col justify-between overflow-hidden border border-white/10 backdrop-blur-2xl shadow-2xl"
+              >
+                {/* Brand Header with Close ✕ Button */}
+                <div>
+                  <div className="flex items-center justify-between pb-4 border-b border-white/10">
+                    <div
+                      onClick={() => {
+                        setActiveTab('dashboard');
+                        setMobileDrawerOpen(false);
+                      }}
+                      className="flex items-center gap-3 cursor-pointer"
+                    >
+                      <div
+                        style={{ background: `linear-gradient(135deg, ${activeThemeObj.c1}, ${activeThemeObj.c2})` }}
+                        className="w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-white shrink-0 shadow-lg"
+                      >
+                        🏪
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="text-sm font-black text-white truncate">Ankush Store</h2>
+                        <p className="text-[10px] font-bold text-cyan-300 truncate">Admin Portal</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setMobileDrawerOpen(false)}
+                      className="text-slate-400 hover:text-white p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+                      title="Close Sidebar"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Nav Items List */}
+                  <nav className="mt-4 space-y-1.5 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+                    {NAVIGATION_ITEMS.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveTab(item.id);
+                            setMobileDrawerOpen(false);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer ${
+                            isActive
+                              ? 'text-white shadow-lg border border-white/20'
+                              : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
+                          }`}
+                          style={isActive ? {
+                            background: `linear-gradient(90deg, ${activeThemeObj.c1}, ${activeThemeObj.c2})`,
+                            boxShadow: `0 4px 14px color-mix(in srgb, ${activeThemeObj.c1} 45%, transparent)`
+                          } : {}}
+                        >
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span className="flex-1 text-left truncate">{item.label}</span>
+                          {item.badge && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              item.id === 'pending'
+                                ? 'bg-amber-400 text-amber-950 font-black'
+                                : 'bg-white/10 text-slate-300'
+                            }`}>
+                              {item.badge}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </nav>
+                </div>
+
+                {/* Bottom Controls */}
+                <div className="pt-3 border-t border-white/10 space-y-2">
+                  <button
+                    onClick={() => {
+                      setMobileDrawerOpen(false);
+                      setCurrentView('home');
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer flex items-center gap-2"
+                  >
+                    <span>🏠</span>
+                    <span>Open Storefront</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMobileDrawerOpen(false);
+                      handleLogoutAdmin();
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-rose-300 hover:bg-rose-500/20 transition-colors cursor-pointer flex items-center gap-2"
+                  >
+                    <span>🚪</span>
+                    <span>Logout Admin</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* =====================================================================
           MAIN CONTENT AREA

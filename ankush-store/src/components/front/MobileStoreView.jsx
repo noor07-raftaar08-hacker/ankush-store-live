@@ -3,12 +3,20 @@ import { motion } from 'framer-motion';
 import { useStore, RealGoldCoinIcon, SHOP_WHATSAPP_NUMBER } from '../../StoreContext';
 import { Search, ShoppingCart, User, Menu } from '../../components/Icons';
 
+import MiddleBanners from './MiddleBanners';
+import DailyDeals from './DailyDeals';
+import DualOfferBanners from './DualOfferBanners';
+import RecommendedAndBestSellers from './RecommendedAndBestSellers';
+import TrustBadges from './TrustBadges';
+import FreshFooter from './FreshFooter';
+
 export default function MobileStoreView({
   searchQuery,
   onSearchChange,
   selectedCategory,
   onCategoryChange,
-  onInspectProduct
+  onInspectProduct,
+  onOpenTrackOrder
 }) {
   const {
     products,
@@ -218,7 +226,7 @@ export default function MobileStoreView({
       </div>
 
       {/* 4. 2-COLUMN CLEAN SQUARE PRODUCT GRID (Matching Image 2 - Top 10 + Show More) */}
-      <div className="px-4 pt-3">
+      <div id="main-products-catalog" className="px-4 pt-3 scroll-mt-20">
         <div className="flex items-center justify-between mb-2.5">
           <h3 className="text-sm font-black text-slate-900">
             {selectedCategory === 'All' ? 'Popular Items' : selectedCategory} ({filteredProducts.length})
@@ -383,6 +391,27 @@ export default function MobileStoreView({
           </div>
         )}
       </div>
+
+      {/* 5. MIDDLE PROMOTIONAL BANNERS */}
+      <MiddleBanners onSelectCategory={onCategoryChange} />
+
+      {/* 6. DAILY DEALS SECTION (Contains #daily-deals-section for mobile smooth scroll) */}
+      <DailyDeals onInspectProduct={onInspectProduct} />
+
+      {/* 7. DUAL OFFER SECONDARY BANNERS */}
+      <DualOfferBanners onSelectCategory={onCategoryChange} />
+
+      {/* 8. RECOMMENDED FOR YOU (SMART PAIR) + BEST SELLERS */}
+      <RecommendedAndBestSellers onInspectProduct={onInspectProduct} />
+
+      {/* 9. 4 TRUST GUARANTEE BADGES */}
+      <TrustBadges />
+
+      {/* 10. DEEP GREEN STORE FOOTER */}
+      <FreshFooter
+        onOpenTrackOrder={onOpenTrackOrder}
+        onSelectCategory={onCategoryChange}
+      />
 
       {/* 5. STICKY FLOATING CART BAR AT BOTTOM (If Cart Has Items) */}
       {totalItems > 0 && (
