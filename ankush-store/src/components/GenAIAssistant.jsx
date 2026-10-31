@@ -171,6 +171,15 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     } catch (e) {}
   }, []);
 
+  // Bubble helper (placed before testGeminiConnection to prevent TDZ ReferenceError)
+  const showBubble = useCallback((title, text, action = null) => {
+    if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
+    setBubble({ title, text, show: true, action });
+    fadeTimeoutRef.current = setTimeout(() => {
+      setBubble(prev => ({ ...prev, show: false }));
+    }, 15000);
+  }, []);
+
   // Google Gemini API Live Verification with models/gemini-flash-lite-latest
   const testGeminiConnection = useCallback(async (keyToTest) => {
     const key = (keyToTest || geminiApiKey || '').trim();
@@ -366,15 +375,6 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
       currentOpenStatus: storeSettings?.isStoreOpen ? 'Dukan Khuli Hai (Open)' : 'Dukan Band Hai (Closed)'
     };
   }, [orders, products, customers, storeSettings, activeOffers]);
-
-  // Bubble helper
-  const showBubble = useCallback((title, text, action = null) => {
-    if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
-    setBubble({ title, text, show: true, action });
-    fadeTimeoutRef.current = setTimeout(() => {
-      setBubble(prev => ({ ...prev, show: false }));
-    }, 15000);
-  }, []);
 
   // Answer Query using Gemini Multi-Turn or Conversational Brain
   const answerQuery = useCallback(async (q) => {

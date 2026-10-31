@@ -450,6 +450,39 @@ app.get('/api/customers', async (req, res) => {
   }
 });
 
+// Bulk Sync Customers List
+app.post('/api/customers/sync', async (req, res) => {
+  try {
+    const { customers: clientList } = req.body;
+    if (Array.isArray(clientList) && clientList.length > 0) {
+      for (const c of clientList) {
+        if (c.phone && c.pin) {
+          const exists = await Customer.findOne({ phone: String(c.phone).trim() });
+          if (!exists) {
+            const hashedPin = (c.pin && c.pin.startsWith('$2')) ? c.pin : await bcrypt.hash(String(c.pin).trim(), 10);
+            await Customer.create({
+              id: c.id || `CUST-${Date.now()}`,
+              name: c.name || 'VIP Customer',
+              phone: String(c.phone).trim(),
+              pin: hashedPin,
+              address: c.address || '',
+              savedAddresses: c.savedAddresses || [],
+              coins: Number(c.coins) || 20,
+              unseenReward: c.unseenReward || null,
+              coinHistory: c.coinHistory || [],
+              joinedAt: c.joinedAt || new Date()
+            }).catch(() => {});
+          }
+        }
+      }
+    }
+    const customers = await Customer.find().sort({ joinedAt: -1 });
+    res.json({ success: true, customers: customers.map(c => sanitizeCustomer(c)) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Reward Customer with VIP Coins (Fixed Missing Endpoint)
 app.post('/api/customers/:phone/reward', async (req, res) => {
   try {
