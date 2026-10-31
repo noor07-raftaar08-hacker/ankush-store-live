@@ -786,6 +786,11 @@ export default function AdminDashboard() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 4. Intelligent Jarvis-Style Canvas AI Assistant (Aura / Gen) for Admin Management */}
+      {isGenAiActive && (
+        <GenAIAssistant onNavigateTab={(tab) => setActiveTab(tab)} activeTab={activeTab} />
+      )}
     </div>
   );
 }

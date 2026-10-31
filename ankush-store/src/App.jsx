@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { StoreProvider, useStore } from './StoreContext';
+import { StoreProvider, useStore, API_BASE_URL } from './StoreContext';
 import PublicStore from './PublicStore';
 import AdminDashboard from './AdminDashboard';
 import CustomerDashboard from './CustomerDashboard';
 import CustomerLoginModal from './CustomerLoginModal';
-import GenAIAssistant from './components/GenAIAssistant';
 import { User, Lock, Eye, EyeOff } from './components/Icons';
 
 // Admin Authentication Screen
@@ -14,16 +13,47 @@ function AdminLoginView({ onLoginSuccess, onBack }) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
+    setError('');
+    setIsSubmitting(true);
+
+    try {
+      if (API_BASE_URL) {
+        const res = await fetch(`${API_BASE_URL}/api/admin/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username.trim(), password })
+        });
+        const data = await res.json();
+        if (data.success && data.token) {
+          localStorage.setItem('ankush_admin_token', data.token);
+          localStorage.setItem('ankush_admin_auth', 'true');
+          localStorage.setItem('ankush_current_view', 'admin');
+          setIsSubmitting(false);
+          onLoginSuccess();
+          return;
+        }
+        if (data.message) {
+          setError(data.message);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+    } catch (err) {}
+
+    // Offline / direct fallback
     if (username.trim() === 'AnkushStore' && password === 'AGenStore@071') {
       try {
         localStorage.setItem('ankush_admin_auth', 'true');
         localStorage.setItem('ankush_current_view', 'admin');
       } catch (err) {}
+      setIsSubmitting(false);
       onLoginSuccess();
     } else {
+      setIsSubmitting(false);
       setError('Galat Credentials! Sirf shop owner access kar sakte hain.');
     }
   };
@@ -223,13 +253,6 @@ function AppContent() {
 
       {/* Unified Global Customer & Admin Login Modal */}
       <CustomerLoginModal />
-
-      {/* Intelligent Jarvis-Style Canvas AI Assistant (Aura / Gen) */}
-      {isGenAiActive && (
-        <ErrorBoundary>
-          <GenAIAssistant />
-        </ErrorBoundary>
-      )}
     </div>
   );
 }

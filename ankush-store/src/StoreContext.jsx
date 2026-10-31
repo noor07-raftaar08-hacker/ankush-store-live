@@ -570,11 +570,21 @@ export function StoreProvider({ children }) {
   });
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/products/sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ products })
-    }).catch(() => {});
+    fetch(`${API_BASE_URL}/api/products`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setProducts(data);
+          localStorage.setItem('ankush_products', JSON.stringify(data));
+        } else {
+          fetch(`${API_BASE_URL}/api/products/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ products })
+          }).catch(() => {});
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const saveProductsList = (updatedList) => {
@@ -644,12 +654,31 @@ export function StoreProvider({ children }) {
           }))
         } : p.discountConfig;
 
+        const nextPackages = (updatedFields.packages && updatedFields.packages.length > 0)
+          ? updatedFields.packages
+          : (p.packages || []).map(pk => {
+              if (pk.weight === '1 kg' || pk.weight === `1 ${nextUnit}`) {
+                return { ...pk, price: nextPrice };
+              }
+              if (pk.weight === '500g' || pk.weight === '500ml' || pk.packageName?.includes('500')) {
+                return { ...pk, price: Math.round(nextPrice * 0.5) };
+              }
+              if (pk.weight === '250g' || pk.packageName?.includes('250')) {
+                return { ...pk, price: Math.max(5, Math.round(nextPrice * 0.25)) };
+              }
+              if (pk.weight === '5 kg' || pk.weight === '5 Liter' || pk.packageName?.includes('5 kg')) {
+                return { ...pk, price: Math.round(nextPrice * 5) };
+              }
+              return { ...pk, price: nextPrice };
+            });
+
         return {
           ...p,
           ...updatedFields,
           unit: nextUnit,
           price: nextPrice,
           mrp: updatedFields.mrp !== undefined ? Number(updatedFields.mrp) : Math.round(nextPrice * 1.15),
+          packages: nextPackages,
           discountConfig: nextDiscountConfig
         };
       }
@@ -1019,7 +1048,11 @@ export function StoreProvider({ children }) {
   const fetchOrders = async () => {
     if (!API_BASE_URL) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/orders`);
+      const token = localStorage.getItem('ankush_admin_token');
+      const queryParam = currentUser?.phone ? `?phone=${encodeURIComponent(currentUser.phone)}` : '';
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+      const res = await fetch(`${API_BASE_URL}/api/orders${queryParam}`, { headers });
       if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -1047,9 +1080,16 @@ export function StoreProvider({ children }) {
     }
 
     fetchOrders();
-    const interval = setInterval(fetchOrders, 12000);
-    return () => clearInterval(interval);
-  }, []);
+
+    // Only set up recurring interval if Admin is actively logged in to Admin Dashboard
+    let interval = null;
+    if (isAdminAuth) {
+      interval = setInterval(fetchOrders, 15000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isAdminAuth, currentUser?.phone]);
 
   // Offers State
   const [offers, setOffers] = useState(() => {
@@ -1246,8 +1286,7 @@ export function StoreProvider({ children }) {
       return null;
     }
 
-    const orderNumber = 1001 + orders.length;
-    const secureOrderId = `AGS-${orderNumber}`;
+    const secureOrderId = `AGS-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
     const newOrder = {
       ...orderData,
       id: secureOrderId,
@@ -1318,7 +1357,6 @@ export function StoreProvider({ children }) {
       `*Delivery Charge:* ${newOrder.deliveryCharge === 0 ? 'FREE (₹0)' : '₹' + newOrder.deliveryCharge}\n` +
       `${newOrder.coinsUsed > 0 ? `*Loyalty Coins Used:* -₹${newOrder.coinsUsed}\n` : ''}` +
       `*Final Payable Amount:* ₹${newOrder.finalAmount}\n` +
-      `*Payment Mode:* ${paymentNote}`;
       `*Payment Mode:* ${paymentNote}`;
 
     const waLink = `https://api.whatsapp.com/send?phone=${SHOP_WHATSAPP_INTL}&text=${encodeURIComponent(waText)}`;

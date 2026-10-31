@@ -35,7 +35,7 @@ export default function FloatingDailyDealsBadge() {
   if (!isVisible) return null;
 
   return (
-    <aside aria-label="Daily Deals announcement" className="fixed bottom-6 right-5 sm:bottom-8 sm:right-8 z-40 select-none">
+    <aside aria-label="Daily Deals announcement" className="fixed bottom-20 left-4 sm:bottom-8 sm:right-8 sm:left-auto z-40 select-none">
       <motion.div
         initial={{ scale: 0, opacity: 0, y: 40 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
