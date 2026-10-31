@@ -115,14 +115,17 @@ app.get('/api/orders', async (req, res) => {
 app.put('/api/orders/:id', async (req, res) => {
   try {
     const nextStatus = req.body.status || 'delivered';
-    const updated = await Order.findOneAndUpdate(
-      { id: req.params.id },
-      { status: nextStatus },
-      { new: true }
-    );
-    if (!updated) {
-      return res.status(404).json({ success: false, message: "Order not found" });
+    const idParam = req.params.id;
+    let filter = { id: idParam };
+    if (mongoose.Types.ObjectId.isValid(idParam)) {
+      filter = { $or: [{ _id: idParam }, { id: idParam }, { orderId: idParam }] };
+    } else {
+      filter = { $or: [{ id: idParam }, { orderId: idParam }] };
     }
+    const updated = await Order.updateMany(
+      filter,
+      { $set: { status: nextStatus, deliveryDate: new Date() } }
+    );
     res.json({ success: true, updated });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
