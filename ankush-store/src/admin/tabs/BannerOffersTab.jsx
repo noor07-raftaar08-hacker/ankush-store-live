@@ -15,6 +15,7 @@ export default function BannerOffersTab({ onToast }) {
     dailyDealsConfig,
     updateDailyDealsConfig,
     toggleDailyDealProduct,
+    updateDailyDealDiscount,
     storeSettings,
     updateStoreSettings
   } = useStore();
@@ -470,7 +471,7 @@ export default function BannerOffersTab({ onToast }) {
                                   value={discountVal}
                                   onChange={e => {
                                     const val = Math.max(1, Math.min(90, Number(e.target.value) || 10));
-                                    toggleDailyDealProduct(prod.id, val);
+                                    updateDailyDealDiscount(prod.id, val);
                                   }}
                                   className="w-16 px-2 py-1 bg-[#0A0E1E] border border-white/20 rounded-lg text-white font-bold text-center"
                                 />
@@ -494,7 +495,7 @@ export default function BannerOffersTab({ onToast }) {
                                     const calculatedPct = prod.price > 0
                                       ? Math.max(1, Math.min(90, Math.round(((prod.price - customPrice) / prod.price) * 100)))
                                       : 10;
-                                    toggleDailyDealProduct(prod.id, calculatedPct);
+                                    updateDailyDealDiscount(prod.id, calculatedPct);
                                   }}
                                   className="w-20 px-2 py-1 bg-[#0A0E1E] border border-emerald-500/40 rounded-lg text-emerald-300 font-bold text-center"
                                 />

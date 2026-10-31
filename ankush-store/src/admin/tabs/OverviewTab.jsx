@@ -560,7 +560,7 @@ export default function OverviewTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.05]">
-                {overviewFilteredOrders.slice(0, 8).map(ord => {
+                {overviewFilteredOrders.map(ord => {
                   const isDelivered = ord.status === 'delivered';
                   return (
                     <tr key={ord.id} className="hover:bg-white/[0.025]">

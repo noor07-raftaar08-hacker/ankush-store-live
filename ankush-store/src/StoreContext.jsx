@@ -445,6 +445,24 @@ export function StoreProvider({ children }) {
       }
     } catch (e) {}
   }, []);
+
+  // Gen AI Aura Master Switch (Default ON)
+  const [isGenAiActive, setIsGenAiActive] = useState(() => {
+    try {
+      return localStorage.getItem('ags_gen_ai_active') !== 'false';
+    } catch (e) {
+      return true;
+    }
+  });
+  const toggleGenAi = useCallback(() => {
+    setIsGenAiActive(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('ags_gen_ai_active', String(next));
+      } catch (e) {}
+      return next;
+    });
+  }, []);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalInitialTab, setLoginModalInitialTab] = useState('customer');
 
@@ -1308,20 +1326,26 @@ export function StoreProvider({ children }) {
     return newOrder;
   };
 
-  const confirmDelivery = (orderId, nextStatus = 'delivered') => {
+  const confirmDelivery = async (orderId, nextStatus = 'delivered') => {
+    const cleanId = String(orderId || '');
     const updated = orders.map(order =>
-      order.id === orderId
+      (String(order.id) === cleanId || String(order._id) === cleanId || String(order.orderId) === cleanId)
         ? { ...order, status: nextStatus, deliveryDate: new Date().toISOString() }
         : order
     );
     setOrders(updated);
-    localStorage.setItem('ankush_orders', JSON.stringify(updated));
+    try {
+      localStorage.setItem('ankush_orders', JSON.stringify(updated));
+    } catch (e) {}
 
-    fetch(`${API_BASE_URL}/api/orders/${orderId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: nextStatus })
-    }).catch(() => {});
+    try {
+      await fetch(`${API_BASE_URL}/api/orders/${encodeURIComponent(cleanId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      setTimeout(() => fetchOrders(), 500);
+    } catch (e) {}
   };
 
   const saveOffers = (newOffers) => {
@@ -1448,10 +1472,33 @@ export function StoreProvider({ children }) {
       if (exists) {
         updated = existing.filter(d => Number(d.productId) !== numId);
       } else {
-        updated = [...existing, { productId: numId, discountPercent, badge: `${discountPercent}% OFF` }];
+        const cleanPct = Math.max(1, Math.min(90, Number(discountPercent) || 20));
+        updated = [...existing, { productId: numId, discountPercent: cleanPct, badge: `${cleanPct}% OFF` }];
       }
       const next = { ...prev, productDeals: updated };
-      localStorage.setItem('ankush_daily_deals_config', JSON.stringify(next));
+      try { localStorage.setItem('ankush_daily_deals_config', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const updateDailyDealDiscount = (productId, discountPercent = 20) => {
+    setDailyDealsConfig(prev => {
+      const existing = prev.productDeals || [];
+      const numId = Number(productId);
+      const cleanPct = Math.max(1, Math.min(90, Number(discountPercent) || 20));
+      const exists = existing.some(d => Number(d.productId) === numId);
+      let updated;
+      if (exists) {
+        updated = existing.map(d =>
+          Number(d.productId) === numId
+            ? { ...d, discountPercent: cleanPct, badge: `${cleanPct}% OFF` }
+            : d
+        );
+      } else {
+        updated = [...existing, { productId: numId, discountPercent: cleanPct, badge: `${cleanPct}% OFF` }];
+      }
+      const next = { ...prev, productDeals: updated };
+      try { localStorage.setItem('ankush_daily_deals_config', JSON.stringify(next)); } catch (e) {}
       return next;
     });
   };
@@ -1511,7 +1558,9 @@ export function StoreProvider({ children }) {
       storeCategories, saveStoreCategories, addStoreCategory, updateStoreCategory, deleteStoreCategory, toggleStoreCategory,
       storeBanners, updateStoreBanner, toggleStoreBanner,
       recommendedProducts, bestSellersProducts,
-      flyingCartItem, triggerFlyToCart
+      flyingCartItem, triggerFlyToCart,
+      dailyDealsConfig, updateDailyDealCountdown, toggleDailyDealProduct, updateDailyDealDiscount,
+      isGenAiActive, toggleGenAi
     }}>
       {children}
 

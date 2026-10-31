@@ -195,7 +195,9 @@ export default function AdminDashboard() {
     products,
     customers,
     orders,
-    getPendingOrders
+    getPendingOrders,
+    isGenAiActive,
+    toggleGenAi
   } = useStore();
 
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -210,16 +212,6 @@ export default function AdminDashboard() {
   const [designSystemOpen, setDesignSystemOpen] = useState(false);
   const [inspectedOrder, setInspectedOrder] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
-  const [isGenAiActive, setIsGenAiActive] = useState(() => localStorage.getItem('ags_gen_ai_active') !== 'false');
-
-  const toggleGenAi = () => {
-    setIsGenAiActive(prev => {
-      const next = !prev;
-      localStorage.setItem('ags_gen_ai_active', String(next));
-      triggerToast(next ? '✨ Gen AI Online' : '💤 Gen AI Offline', next ? 'Co-Pilot is listening & ready.' : 'Co-Pilot has been turned off.');
-      return next;
-    });
-  };
 
   const pendingOrders = useMemo(() => {
     try {
@@ -794,19 +786,6 @@ export default function AdminDashboard() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Intelligent Jarvis-Style Canvas AI Assistant (Gen) */}
-      {isGenAiActive && (
-        <TabErrorBoundary>
-          <GenAIAssistant
-            activeTab={activeTab}
-            onNavigateTab={(tab) => {
-              setActiveTab(tab);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-          />
-        </TabErrorBoundary>
-      )}
     </div>
   );
 }

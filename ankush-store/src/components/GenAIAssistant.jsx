@@ -871,7 +871,28 @@ INSTRUCTIONS:
     return () => window.removeEventListener('mousemove', handleMove);
   }, []);
 
-  // Draggable physics
+  const updateOrbPosition = useCallback((x, y) => {
+    posRef.current = { x, y };
+    if (aiRef.current) {
+      aiRef.current.style.transform = `translate(${x}px, ${y}px)`;
+    }
+  }, []);
+
+  useEffect(() => {
+    const initX = typeof window !== 'undefined' ? Math.max(10, window.innerWidth - 130) : 250;
+    const initY = typeof window !== 'undefined' ? Math.max(70, window.innerHeight - 170) : 400;
+    updateOrbPosition(initX, initY);
+
+    const handleResize = () => {
+      const nx = Math.min(window.innerWidth - 120, Math.max(10, posRef.current.x));
+      const ny = Math.min(window.innerHeight - 150, Math.max(60, posRef.current.y));
+      updateOrbPosition(nx, ny);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [updateOrbPosition]);
+
+  // Draggable physics with robust window listeners
   const onPointerDown = (e) => {
     dragRef.current = {
       startX: e.clientX,
@@ -880,29 +901,33 @@ INSTRUCTIONS:
       posY: posRef.current.y,
       moved: false
     };
-  };
 
-  const onPointerMove = (e) => {
-    if (!dragRef.current) return;
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    if (Math.hypot(dx, dy) > 4) {
-      dragRef.current.moved = true;
-    }
-    const nx = Math.min(window.innerWidth - 116, Math.max(6, dragRef.current.posX + dx));
-    const ny = Math.min(window.innerHeight - 150, Math.max(50, dragRef.current.posY + dy));
-    posRef.current = { x: nx, y: ny };
-    if (aiRef.current) {
-      aiRef.current.style.transform = `translate(${nx}px, ${ny}px)`;
-    }
-  };
+    const handleGlobalMove = (ev) => {
+      if (!dragRef.current) return;
+      const dx = ev.clientX - dragRef.current.startX;
+      const dy = ev.clientY - dragRef.current.startY;
+      if (Math.hypot(dx, dy) > 4) {
+        dragRef.current.moved = true;
+      }
+      const nx = Math.min(window.innerWidth - 116, Math.max(6, dragRef.current.posX + dx));
+      const ny = Math.min(window.innerHeight - 150, Math.max(50, dragRef.current.posY + dy));
+      posRef.current = { x: nx, y: ny };
+      if (aiRef.current) {
+        aiRef.current.style.transform = `translate(${nx}px, ${ny}px)`;
+      }
+    };
 
-  const onPointerUp = () => {
-    if (dragRef.current && !dragRef.current.moved) {
-      // Tap toggle console
-      setIsConsoleOpen(prev => !prev);
-    }
-    dragRef.current = null;
+    const handleGlobalUp = () => {
+      if (dragRef.current && !dragRef.current.moved) {
+        setIsConsoleOpen(prev => !prev);
+      }
+      dragRef.current = null;
+      window.removeEventListener('pointermove', handleGlobalMove);
+      window.removeEventListener('pointerup', handleGlobalUp);
+    };
+
+    window.addEventListener('pointermove', handleGlobalMove);
+    window.addEventListener('pointerup', handleGlobalUp);
   };
 
   return (
@@ -911,27 +936,46 @@ INSTRUCTIONS:
       <div
         ref={aiRef}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
         style={{
           transform: `translate(${posRef.current.x}px, ${posRef.current.y}px)`,
           touchAction: 'none'
         }}
-        className="fixed top-0 left-0 z-50 w-[110px] h-[110px] cursor-grab active:cursor-grabbing select-none"
+        className="fixed top-0 left-0 z-[9999] w-[110px] h-[110px] cursor-grab active:cursor-grabbing select-none"
       >
         <canvas
           ref={canvasRef}
-          className="w-[110px] h-[110px] block pointer-events-none drop-shadow-[0_8px_20px_rgba(124,92,255,0.4)]"
+          className="w-[110px] h-[110px] block pointer-events-none drop-shadow-[0_8px_25px_rgba(124,92,255,0.65)]"
         />
 
         {/* Status indicator dot */}
         <div
-          className={`absolute bottom-0 right-3 w-3 h-3 rounded-full border-2 border-slate-900 pointer-events-none ${
+          className={`absolute bottom-1 right-3 w-3.5 h-3.5 rounded-full border-2 border-slate-900 pointer-events-none ${
             apiConnectionStatus === 'connected' ? 'bg-emerald-400 animate-pulse' :
             apiConnectionStatus === 'error' ? 'bg-rose-500' : 'bg-amber-400'
           }`}
           title={apiConnectionStatus === 'connected' ? 'Gemini AI Online' : 'Gemini AI Offline'}
         />
+
+        {/* 1-Click Quick Mic Action Trigger next to Orb */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isListening) {
+              stopListening();
+            } else {
+              startListening();
+            }
+          }}
+          className={`absolute -top-1 -right-1 w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-xs font-bold transition-all shadow-lg cursor-pointer ${
+            isListening
+              ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse ring-4 ring-rose-500/30'
+              : 'bg-violet-600/90 hover:bg-violet-500 text-white'
+          }`}
+          title={isListening ? 'Click to stop listening' : 'Click to speak to Gen AI'}
+        >
+          {isListening ? '⏹️' : '🎙️'}
+        </button>
       </div>
 
       {/* Floating Speech Bubble (#bub) matching exact aura_jarves.txt */}
@@ -942,7 +986,7 @@ INSTRUCTIONS:
             left: `${Math.min(window.innerWidth - 290, Math.max(10, posRef.current.x - 170))}px`,
             top: `${Math.max(10, posRef.current.y - 110)}px`
           }}
-          className="fixed z-50 w-72 max-w-[85vw] max-h-48 overflow-y-auto bg-slate-950/95 text-white border border-[#7c5cff] p-3 rounded-2xl text-xs shadow-[0_8px_30px_rgba(124,92,255,0.35)] space-y-1 backdrop-blur-md"
+          className="fixed z-[9999] w-72 max-w-[85vw] max-h-48 overflow-y-auto bg-slate-950/95 text-white border border-[#7c5cff] p-3 rounded-2xl text-xs shadow-[0_8px_30px_rgba(124,92,255,0.35)] space-y-1 backdrop-blur-md"
         >
           {bubble.title && (
             <div className="text-[11px] font-bold text-teal-300">
@@ -957,7 +1001,7 @@ INSTRUCTIONS:
 
       {/* Slide-out Gemini Live Console */}
       {isConsoleOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-3 sm:p-4">
           <div
             className="fixed inset-0 bg-black/80 backdrop-blur-sm"
             onClick={() => setIsConsoleOpen(false)}

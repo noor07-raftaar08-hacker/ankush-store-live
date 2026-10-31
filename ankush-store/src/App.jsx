@@ -5,6 +5,7 @@ import PublicStore from './PublicStore';
 import AdminDashboard from './AdminDashboard';
 import CustomerDashboard from './CustomerDashboard';
 import CustomerLoginModal from './CustomerLoginModal';
+import GenAIAssistant from './components/GenAIAssistant';
 import { User, Lock, Eye, EyeOff } from './components/Icons';
 
 // Admin Authentication Screen
@@ -188,7 +189,7 @@ class ErrorBoundary extends React.Component {
 
 // Master Content Switcher
 function AppContent() {
-  const { currentView, setCurrentView, isAdminAuth, setIsAdminAuth } = useStore();
+  const { currentView, setCurrentView, isAdminAuth, setIsAdminAuth, isGenAiActive } = useStore();
 
   return (
     <div
@@ -222,6 +223,9 @@ function AppContent() {
 
       {/* Unified Global Customer & Admin Login Modal */}
       <CustomerLoginModal />
+
+      {/* Intelligent Jarvis-Style Canvas AI Assistant (Aura / Gen) */}
+      {isGenAiActive && <GenAIAssistant />}
     </div>
   );
 }

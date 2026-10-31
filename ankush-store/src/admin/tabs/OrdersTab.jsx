@@ -164,8 +164,8 @@ export default function OrdersTab({ mode = 'pending', onInspectOrder, onToast })
                     size="sm"
                     icon={Check}
                     onClick={() => {
-                      confirmDelivery(order.id, 'delivered');
-                      if (onToast) onToast('Order Delivered', `${order.id} marked as Delivered.`);
+                      confirmDelivery(order.id || order._id, 'delivered');
+                      if (onToast) onToast('Order Delivered', `${order.id || 'Order'} marked as Delivered.`);
                     }}
                   >
                     Confirm Delivery
