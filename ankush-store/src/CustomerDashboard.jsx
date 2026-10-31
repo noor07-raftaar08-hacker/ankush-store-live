@@ -9,12 +9,14 @@ import {
 } from './StoreContext';
 import Footer from './Footer';
 import OrderReceiptModal from './components/OrderReceiptModal';
+import GenAIAssistant from './components/GenAIAssistant';
 
 export default function CustomerDashboard() {
   const {
     currentUser,
     logoutCustomer,
     updateCustomerProfile,
+    acknowledgeCoinReward,
     setCurrentView,
     storeSettings,
     orders,
@@ -57,7 +59,9 @@ export default function CustomerDashboard() {
   const [profileName, setProfileName] = useState(currentUser?.name || '');
   const [profilePin, setProfilePin] = useState(currentUser?.pin || '');
   const [profileAddress, setProfileAddress] = useState(currentUser?.address || '');
+  const [profileAvatar, setProfileAvatar] = useState(currentUser?.avatar || '');
   const [showProfilePin, setShowProfilePin] = useState(false);
+  const [showRewardModal, setShowRewardModal] = useState(Boolean(currentUser?.unseenReward?.hasUnseen));
 
   // Support & Custom Parchi States
   const [parchiText, setParchiText] = useState('');
@@ -253,16 +257,22 @@ export default function CustomerDashboard() {
     let totalSpent = 0;
     let totalOrderValue = 0;
     let discountSaved = 0;
+    let coinsSaved = 0;
+    let directDiscount = 0;
     let cashTotal = 0;
     let upiTotal = 0;
 
     myOrders.forEach(o => {
       const finalAmt = Number(o.finalAmount) || 0;
       const rawAmt = Number(o.rawSubtotal) || finalAmt;
-      const discAmt = (Number(o.totalDiscount) || 0) + (Number(o.coinsUsed) || 0);
+      const cUsed = Number(o.coinsUsed) || 0;
+      const dSaved = Number(o.totalDiscount) || 0;
+      const discAmt = dSaved + cUsed;
 
       totalOrderValue += rawAmt;
       discountSaved += discAmt;
+      coinsSaved += cUsed;
+      directDiscount += dSaved;
       totalSpent += finalAmt;
 
       if (o.paymentMethod === 'cash') {
@@ -275,6 +285,8 @@ export default function CustomerDashboard() {
     return {
       totalSpent,
       discountSaved,
+      coinsSaved,
+      directDiscount,
       totalOrders: myOrders.length,
       orderValue: totalOrderValue,
       cashTotal,
@@ -282,6 +294,97 @@ export default function CustomerDashboard() {
       coins: currentUser?.coins || 0
     };
   }, [myOrders, currentUser]);
+
+  // Monthly 3-Bar Ranking Progress Tracker
+  const monthlyRankingData = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthName = now.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+
+    // Orders placed in current calendar month
+    const thisMonthSpend = myOrders
+      .filter(o => {
+        if (!o.orderDate) return false;
+        const d = new Date(o.orderDate);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      })
+      .reduce((sum, o) => sum + (Number(o.finalAmount) || 0), 0);
+
+    const bars = storeSettings?.monthlyRankingBars || {
+      bar1: { name: 'Silver Milestone', targetSpend: 2000, rewardCoins: 50, color: 'emerald' },
+      bar2: { name: 'Gold VIP Milestone', targetSpend: 5000, rewardCoins: 150, color: 'amber' },
+      bar3: { name: 'Diamond Royal Milestone', targetSpend: 10000, rewardCoins: 350, color: 'purple' }
+    };
+
+    const target1 = Math.max(1, Number(bars.bar1?.targetSpend) || 2000);
+    const target2 = Math.max(target1 + 1, Number(bars.bar2?.targetSpend) || 5000);
+    const target3 = Math.max(target2 + 1, Number(bars.bar3?.targetSpend) || 10000);
+
+    let activeBarIndex = 1;
+    let currentTarget = target1;
+    let currentReward = Number(bars.bar1?.rewardCoins) || 50;
+    let currentBarName = bars.bar1?.name || 'Silver Milestone';
+    let progressPercent = 0;
+    let remainingSpend = 0;
+    let barGradient = 'from-emerald-400 via-teal-400 to-emerald-500';
+    let barShadow = 'shadow-emerald-500/30';
+    let badgeText = '🥈 Bar 1: Silver';
+
+    if (thisMonthSpend < target1) {
+      activeBarIndex = 1;
+      currentTarget = target1;
+      currentReward = Number(bars.bar1?.rewardCoins) || 50;
+      currentBarName = bars.bar1?.name || 'Silver Milestone';
+      progressPercent = Math.min(100, Math.round((thisMonthSpend / target1) * 100));
+      remainingSpend = Math.max(0, target1 - thisMonthSpend);
+      barGradient = 'from-emerald-400 via-teal-400 to-emerald-500';
+      barShadow = 'shadow-emerald-500/30';
+      badgeText = '🥈 Bar 1: Silver';
+    } else if (thisMonthSpend < target2) {
+      activeBarIndex = 2;
+      currentTarget = target2;
+      currentReward = Number(bars.bar2?.rewardCoins) || 150;
+      currentBarName = bars.bar2?.name || 'Gold VIP Milestone';
+      const range = target2 - target1;
+      const progressInLevel = thisMonthSpend - target1;
+      progressPercent = Math.min(100, Math.round((progressInLevel / range) * 100));
+      remainingSpend = Math.max(0, target2 - thisMonthSpend);
+      barGradient = 'from-amber-400 via-yellow-400 to-orange-500';
+      barShadow = 'shadow-amber-500/40';
+      badgeText = '🥇 Bar 2: Gold VIP';
+    } else {
+      activeBarIndex = 3;
+      currentTarget = target3;
+      currentReward = Number(bars.bar3?.rewardCoins) || 350;
+      currentBarName = bars.bar3?.name || 'Diamond Royal Milestone';
+      const range = Math.max(1000, target3 - target2);
+      const progressInLevel = thisMonthSpend - target2;
+      progressPercent = Math.min(100, Math.round((progressInLevel / range) * 100));
+      remainingSpend = Math.max(0, target3 - thisMonthSpend);
+      barGradient = 'from-fuchsia-500 via-purple-500 to-indigo-500';
+      barShadow = 'shadow-purple-500/40';
+      badgeText = '💎 Bar 3: Diamond Royal';
+    }
+
+    return {
+      monthName,
+      thisMonthSpend,
+      activeBarIndex,
+      currentTarget,
+      currentReward,
+      currentBarName,
+      progressPercent,
+      remainingSpend,
+      barGradient,
+      barShadow,
+      badgeText,
+      target1,
+      target2,
+      target3,
+      bars
+    };
+  }, [myOrders, storeSettings?.monthlyRankingBars]);
 
   // 3. VIP Tier Badge Calculation
   const vipTierInfo = useMemo(() => {
@@ -435,6 +538,22 @@ export default function CustomerDashboard() {
     );
   };
 
+  const handleAvatarUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      alert("⚠️ Photo size 2MB se kam honi chahiye!");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const base64 = evt.target.result;
+      setProfileAvatar(base64);
+      showToast("📸 Profile photo select ho gayi! Ab 'Save Profile' par click karein.");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSaveProfile = (e) => {
     e.preventDefault();
     if (profilePin.length !== 4 || !/^\d{4}$/.test(profilePin)) {
@@ -444,7 +563,8 @@ export default function CustomerDashboard() {
     updateCustomerProfile(currentUser.phone, {
       name: profileName.trim(),
       pin: profilePin.trim(),
-      address: profileAddress.trim()
+      address: profileAddress.trim(),
+      avatar: profileAvatar
     });
     showToast("✅ Aapka Profile, PIN aur Delivery Address save ho gaya!");
   };
@@ -566,6 +686,88 @@ export default function CustomerDashboard() {
       </AnimatePresence>
 
       {/* =====================================================================
+          VIP BONUS COIN CELEBRATION REWARD POP-UP MODAL (ADMIN GIFT)
+      ===================================================================== */}
+      <AnimatePresence>
+        {(showRewardModal || currentUser?.unseenReward?.hasUnseen) && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/85 backdrop-blur-md"
+              onClick={() => {
+                setShowRewardModal(false);
+                acknowledgeCoinReward();
+              }}
+            />
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: 25 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.85, opacity: 0, y: 25 }}
+              transition={{ type: 'spring', damping: 20, stiffness: 260 }}
+              className="relative w-full max-w-md bg-gradient-to-b from-[#162a3f] via-[#0d1d2b] to-[#0a1420] border-2 border-amber-400 rounded-3xl p-6 sm:p-7 text-center shadow-[0_0_50px_rgba(251,191,36,0.35)] z-10 overflow-hidden"
+            >
+              <div className="absolute -top-16 -right-16 w-40 h-40 bg-amber-400/20 rounded-full blur-2xl pointer-events-none" />
+              <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-emerald-400/20 rounded-full blur-2xl pointer-events-none" />
+
+              <div className="relative z-10 space-y-4">
+                <div className="inline-flex p-3 bg-amber-400/20 rounded-full border border-amber-400/40 shadow-inner">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-200 flex items-center justify-center text-4xl shadow-xl animate-bounce">
+                    🪙
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1 bg-amber-400/20 text-amber-300 border border-amber-400/40 rounded-full">
+                    👑 VIP Special Gift Received!
+                  </span>
+                  <h3 className="text-2xl font-black text-white mt-2">
+                    Badhai Ho, {currentUser.name}! 🎉
+                  </h3>
+                  <p className="text-xs text-amber-200/90 mt-1">
+                    Ankush General Store Admin ne aapko khas VIP Bonus Coins bheje hain!
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-r from-amber-500/20 via-yellow-400/20 to-amber-500/20 border border-amber-400/50 rounded-2xl py-3.5 px-4 shadow-inner">
+                  <span className="text-xs text-amber-200 font-bold block">Credited to Your Wallet</span>
+                  <span className="text-4xl font-black text-amber-300 tracking-tight">
+                    +{currentUser?.unseenReward?.amount || 20} Coins
+                  </span>
+                  <span className="text-[11px] text-emerald-300 font-bold block mt-0.5">
+                    = ₹{currentUser?.unseenReward?.amount || 20} Instant Cash Discount
+                  </span>
+                </div>
+
+                {currentUser?.unseenReward?.message && (
+                  <div className="bg-black/40 border border-white/10 rounded-2xl p-3 text-left">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      💬 Message from Ankush Store:
+                    </p>
+                    <p className="text-xs text-white/95 font-medium mt-1 italic">
+                      "{currentUser.unseenReward.message}"
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    setShowRewardModal(false);
+                    acknowledgeCoinReward();
+                    showToast('🎉 Coins aapke wallet me add ho gaye!');
+                  }}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/30 cursor-pointer transform active:scale-95 transition-all"
+                >
+                  Collect Coins & Open Dashboard ✨
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* =====================================================================
           1. MOBILE SLIDE-IN HAMBURGER MENU DRAWER
       ===================================================================== */}
       <AnimatePresence>
@@ -588,9 +790,13 @@ export default function CustomerDashboard() {
               <div>
                 <div className="flex items-center justify-between pb-5 border-b border-white/15">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-300 to-yellow-500 p-0.5 shadow-lg">
-                      <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-2xl">
-                        🧑🏽
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-300 to-yellow-500 p-0.5 shadow-lg overflow-hidden shrink-0">
+                      <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-2xl overflow-hidden">
+                        {currentUser?.avatar ? (
+                          <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          '🧑🏽'
+                        )}
                       </div>
                     </div>
                     <div>
@@ -746,9 +952,13 @@ export default function CustomerDashboard() {
         <aside className="hidden lg:flex flex-col justify-between w-64 bg-gradient-to-b from-[#0d2238]/95 via-[#0a2e36]/95 to-[#083838]/95 border border-teal-500/30 rounded-3xl p-4 shrink-0 shadow-2xl h-fit sticky top-20">
           <div className="space-y-4">
             <div className="bg-black/25 border border-white/10 rounded-2xl p-3.5 flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-300 to-yellow-500 p-0.5 shrink-0">
-                <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-2xl">
-                  🧑🏽
+              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-300 to-yellow-500 p-0.5 shrink-0 overflow-hidden">
+                <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-2xl overflow-hidden">
+                  {currentUser?.avatar ? (
+                    <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    '🧑🏽'
+                  )}
                 </div>
               </div>
               <div className="min-w-0">
@@ -805,7 +1015,115 @@ export default function CustomerDashboard() {
           ================================================================= */}
           {activeTab === 'dashboard' && (
             <div className="space-y-5">
-              {/* Top Section: Greeting Card + Ankush Coins Balance Card */}
+              {/* MONTHLY 3-BAR RANKING PROGRESS TRACKER */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-gradient-to-br from-[#0c1b2c] via-[#0b2432] to-[#081822] border-2 border-teal-500/40 rounded-3xl p-4 sm:p-5 shadow-2xl relative overflow-hidden"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/10">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-2xl">🏆</span>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                        <span>Monthly Milestone Ranking</span>
+                        <span className="text-[11px] font-bold text-teal-300 bg-teal-950/80 border border-teal-500/30 px-2.5 py-0.5 rounded-full">
+                          📅 {monthlyRankingData.monthName}
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-300">
+                        Spend monthly to unlock milestone levels & automatically claim bonus rewards!
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                    <span className={`text-xs font-black px-3 py-1 rounded-full shadow-md bg-gradient-to-r ${monthlyRankingData.barGradient} text-slate-950`}>
+                      {monthlyRankingData.badgeText}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3 Step Milestone Badges */}
+                <div className="grid grid-cols-3 gap-2 mt-3.5 mb-2">
+                  {/* Bar 1: Silver */}
+                  <div className={`p-2.5 rounded-2xl border text-center transition-all ${
+                    monthlyRankingData.activeBarIndex === 1
+                      ? 'bg-emerald-950/70 border-emerald-400 shadow-md shadow-emerald-500/20'
+                      : monthlyRankingData.activeBarIndex > 1
+                      ? 'bg-emerald-950/40 border-emerald-600/40 opacity-90'
+                      : 'bg-black/30 border-white/10 opacity-60'
+                  }`}>
+                    <div className="text-xs font-extrabold text-emerald-300 flex items-center justify-center gap-1">
+                      <span>🥈 Bar 1</span>
+                      {monthlyRankingData.activeBarIndex > 1 && <span className="text-emerald-400">✓</span>}
+                    </div>
+                    <div className="text-xs font-black text-white mt-0.5">₹{monthlyRankingData.target1}</div>
+                    <div className="text-[10px] text-amber-300 font-bold">+{monthlyRankingData.bars.bar1?.rewardCoins || 50} Coins</div>
+                  </div>
+
+                  {/* Bar 2: Gold VIP */}
+                  <div className={`p-2.5 rounded-2xl border text-center transition-all ${
+                    monthlyRankingData.activeBarIndex === 2
+                      ? 'bg-amber-950/70 border-amber-400 shadow-md shadow-amber-500/20'
+                      : monthlyRankingData.activeBarIndex > 2
+                      ? 'bg-amber-950/40 border-amber-600/40 opacity-90'
+                      : 'bg-black/30 border-white/10 opacity-60'
+                  }`}>
+                    <div className="text-xs font-extrabold text-amber-300 flex items-center justify-center gap-1">
+                      <span>🥇 Bar 2</span>
+                      {monthlyRankingData.activeBarIndex > 2 && <span className="text-amber-400">✓</span>}
+                    </div>
+                    <div className="text-xs font-black text-white mt-0.5">₹{monthlyRankingData.target2}</div>
+                    <div className="text-[10px] text-amber-300 font-bold">+{monthlyRankingData.bars.bar2?.rewardCoins || 150} Coins</div>
+                  </div>
+
+                  {/* Bar 3: Diamond Royal */}
+                  <div className={`p-2.5 rounded-2xl border text-center transition-all ${
+                    monthlyRankingData.activeBarIndex === 3
+                      ? 'bg-purple-950/70 border-purple-400 shadow-md shadow-purple-500/20'
+                      : 'bg-black/30 border-white/10 opacity-60'
+                  }`}>
+                    <div className="text-xs font-extrabold text-purple-300 flex items-center justify-center gap-1">
+                      <span>💎 Bar 3</span>
+                      {monthlyRankingData.thisMonthSpend >= monthlyRankingData.target3 && <span className="text-purple-400">✓ Max</span>}
+                    </div>
+                    <div className="text-xs font-black text-white mt-0.5">₹{monthlyRankingData.target3}</div>
+                    <div className="text-[10px] text-amber-300 font-bold">+{monthlyRankingData.bars.bar3?.rewardCoins || 350} Coins</div>
+                  </div>
+                </div>
+
+                {/* Progress Bar Container */}
+                <div className="space-y-1.5 mt-3">
+                  <div className="flex justify-between text-xs font-bold text-slate-300">
+                    <span>This Month Spend: <strong className="text-white font-extrabold">₹{monthlyRankingData.thisMonthSpend.toLocaleString('en-IN')}</strong></span>
+                    <span>Next Milestone: <strong className="text-amber-300 font-extrabold">₹{monthlyRankingData.currentTarget.toLocaleString('en-IN')}</strong></span>
+                  </div>
+
+                  <div className="h-3.5 w-full bg-slate-900/90 rounded-full p-0.5 border border-white/15 overflow-hidden shadow-inner">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${monthlyRankingData.progressPercent}%` }}
+                      transition={{ duration: 0.8, ease: 'easeOut' }}
+                      className={`h-full rounded-full bg-gradient-to-r ${monthlyRankingData.barGradient} shadow-lg`}
+                    />
+                  </div>
+
+                  <div className="flex justify-between items-center text-[11px] font-semibold text-slate-400 pt-0.5">
+                    <span>
+                      {monthlyRankingData.remainingSpend > 0 ? (
+                        <>Kharidein aur <strong className="text-amber-300">₹{monthlyRankingData.remainingSpend.toLocaleString('en-IN')}</strong> aur paayein <strong className="text-emerald-300">+{monthlyRankingData.currentReward} Coins</strong>!</>
+                      ) : (
+                        <span className="text-emerald-300 font-bold">🎉 All Monthly Milestones Unlocked! Super VIP Active!</span>
+                      )}
+                    </span>
+                    <span className="font-mono font-extrabold text-white">
+                      {monthlyRankingData.progressPercent}%
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Top Section: Greeting Card + Real Banknote / Currency Aesthetic Coin Card */}
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -813,8 +1131,12 @@ export default function CustomerDashboard() {
                   className="md:col-span-6 bg-gradient-to-br from-[#e6f4f1] to-[#d5ece7] text-slate-900 rounded-3xl p-4 sm:p-5 flex items-center justify-between shadow-lg border border-teal-200"
                 >
                   <div className="flex items-center gap-3.5">
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white p-1 shadow-md flex items-center justify-center text-3xl shrink-0">
-                      🧑🏽
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white p-0.5 shadow-md flex items-center justify-center text-3xl shrink-0 overflow-hidden border border-teal-300">
+                      {currentUser?.avatar ? (
+                        <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover rounded-full" />
+                      ) : (
+                        <span>🧑🏽</span>
+                      )}
                     </div>
                     <div>
                       <h2 className="text-lg sm:text-2xl font-black text-slate-900 leading-tight">
@@ -833,31 +1155,54 @@ export default function CustomerDashboard() {
                   </div>
                 </motion.div>
 
+                {/* REAL BANKNOTE / CURRENCY STYLE COIN CARD */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.05 }}
-                  className="md:col-span-6 bg-gradient-to-r from-[#0d4a42] via-[#0f5c52] to-[#126b5f] text-white rounded-3xl p-5 flex items-center justify-between shadow-xl border border-teal-400/30"
+                  className="md:col-span-6 relative bg-gradient-to-br from-[#0e3b2e] via-[#092920] to-[#041a14] text-white rounded-3xl p-5 shadow-2xl border-2 border-emerald-500/60 overflow-hidden"
                 >
-                  <div>
-                    <p className="text-xs text-teal-100 font-semibold">Ankush Coins Balance</p>
-                    <div className="flex items-baseline gap-2 mt-1">
-                      <span className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-                        {currentUser.coins}
-                      </span>
-                      <span className="text-xs text-amber-300 font-bold">Coins</span>
-                    </div>
-                    <p className="text-xs text-teal-100/90 mt-1 font-medium">
-                      = ₹{currentUser.coins} off on next order
-                    </p>
+                  {/* Banknote Guilloche Borders & Fine Currency Lines */}
+                  <div className="absolute inset-2 border border-dashed border-emerald-400/40 rounded-2xl pointer-events-none" />
+                  <div className="absolute top-2.5 left-4 text-[9px] font-mono tracking-widest text-emerald-300/80 uppercase font-black">
+                    ★ RESERVE OF ANKUSH GENERAL STORE ★
+                  </div>
+                  <div className="absolute top-2.5 right-4 text-[9px] font-mono tracking-widest text-emerald-400/80 uppercase font-black">
+                    AGS-COIN-{currentUser.phone.slice(-4)}
                   </div>
 
-                  <button
-                    onClick={handleSmartRedeemCoins}
-                    className="bg-gradient-to-r from-amber-300 to-yellow-400 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-xs sm:text-sm px-5 py-2.5 rounded-full shadow-lg cursor-pointer shrink-0"
-                  >
-                    Redeem
-                  </button>
+                  <div className="relative z-10 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-200 font-bold uppercase tracking-wider">
+                        <span>🏛️ Official Currency Note</span>
+                      </div>
+
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <span className="text-3xl sm:text-4xl font-black text-amber-300 tracking-tight font-mono drop-shadow-[0_2px_8px_rgba(251,191,36,0.5)]">
+                          ₹{currentUser.coins}
+                        </span>
+                        <span className="text-xs text-emerald-300 font-extrabold uppercase tracking-wide">
+                          ({currentUser.coins} Gold Coins)
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-emerald-100/90 mt-1 font-medium italic">
+                        "Promise to discount ₹{currentUser.coins} on demand upon checkout"
+                      </p>
+                    </div>
+
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
+                      <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 border-2 border-amber-200 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(251,191,36,0.6)]">
+                        🪙
+                      </div>
+                      <button
+                        onClick={handleSmartRedeemCoins}
+                        className="bg-gradient-to-r from-amber-400 to-yellow-300 hover:from-amber-300 hover:to-yellow-200 text-slate-950 font-black text-xs px-4 py-2 rounded-xl shadow-lg cursor-pointer transform active:scale-95 transition-all"
+                      >
+                        Redeem Cash Note →
+                      </button>
+                    </div>
+                  </div>
                 </motion.div>
               </div>
 
@@ -877,9 +1222,12 @@ export default function CustomerDashboard() {
                   <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center font-black text-base shadow-sm mb-2.5">
                     %
                   </div>
-                  <p className="text-xs text-slate-600 font-semibold">Discount Saved</p>
-                  <p className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5">
+                  <p className="text-xs text-slate-600 font-semibold">Total Savings</p>
+                  <p className="text-xl sm:text-2xl font-black text-purple-900 mt-0.5">
                     ₹{financialSummary.discountSaved.toLocaleString('en-IN')}
+                  </p>
+                  <p className="text-[10px] text-purple-700 font-bold mt-1">
+                    ₹{financialSummary.directDiscount} Offer + {financialSummary.coinsSaved} Coins
                   </p>
                 </div>
 
@@ -1884,6 +2232,45 @@ export default function CustomerDashboard() {
               </div>
 
               <form onSubmit={handleSaveProfile} className="space-y-4 max-w-xl">
+                {/* Profile Photo / Avatar Upload Section */}
+                <div className="bg-slate-900/90 border border-slate-700/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 shadow-inner">
+                  <div className="relative w-20 h-20 rounded-full bg-slate-800 border-2 border-emerald-400 overflow-hidden shrink-0 shadow-lg flex items-center justify-center">
+                    {profileAvatar ? (
+                      <img src={profileAvatar} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-4xl">🧑🏽</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1.5 text-center sm:text-left">
+                    <label className="block text-xs font-bold text-white">
+                      Profile Avatar / Photo
+                    </label>
+                    <p className="text-[11px] text-slate-400">
+                      Apni profile photo upload karein (PNG / JPG, max 2MB)
+                    </p>
+                    <div className="flex items-center gap-2 justify-center sm:justify-start">
+                      <label className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold px-3 py-1.5 rounded-xl cursor-pointer shadow">
+                        📷 Upload Photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAvatarUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      {profileAvatar && (
+                        <button
+                          type="button"
+                          onClick={() => setProfileAvatar('')}
+                          className="bg-slate-800 hover:bg-red-900/60 text-slate-300 hover:text-red-200 text-xs font-bold px-2.5 py-1.5 rounded-xl cursor-pointer"
+                        >
+                          Remove Photo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1">Full Name *</label>
@@ -2198,6 +2585,15 @@ export default function CustomerDashboard() {
           );
         })}
       </nav>
+
+      {/* GEN AI ASSISTANT (CANVAS ORB) */}
+      <GenAIAssistant
+        onNavigateTab={(tab) => {
+          if (['dashboard', 'orders', 'rashan', 'wallet', 'offers', 'profile', 'support'].includes(tab)) {
+            setActiveTab(tab);
+          }
+        }}
+      />
 
       {/* Footer */}
       <Footer />

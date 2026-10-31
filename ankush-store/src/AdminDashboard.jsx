@@ -14,6 +14,8 @@ import DiscountPanelTab from './admin/tabs/DiscountPanelTab';
 import BannerOffersTab from './admin/tabs/BannerOffersTab';
 import CustomersTab from './admin/tabs/CustomersTab';
 import StoreSettingsTab from './admin/tabs/StoreSettingsTab';
+import CoinDeliveryStudioTab from './admin/tabs/CoinDeliveryStudioTab';
+import GenAIAssistant from './components/GenAIAssistant';
 
 // Shared Icons
 import {
@@ -250,6 +252,7 @@ export default function AdminDashboard() {
     { id: 'delivered', label: 'Delivered Orders', icon: CheckCircle2, badge: null },
     { id: 'add-product', label: 'Products & Packs', icon: Package, badge: String(products.length) },
     { id: 'discount-panel', label: 'Discount Panel', icon: Sparkles, badge: null },
+    { id: 'coin-delivery', label: 'Coins & Delivery Rules', icon: Sparkles, badge: 'Studio' },
     { id: 'offers', label: 'Banners & Categories', icon: Layers, badge: 'Design' },
     { id: 'customers', label: 'VIP Customers', icon: Users, badge: String(customers.length) },
     { id: 'logo-management', label: 'Brand & Logo Studio', icon: Palette, badge: null },
@@ -617,6 +620,10 @@ export default function AdminDashboard() {
             <DiscountPanelTab onToast={triggerToast} />
           )}
 
+          {activeTab === 'coin-delivery' && (
+            <CoinDeliveryStudioTab onToast={triggerToast} />
+          )}
+
           {activeTab === 'offers' && (
             <BannerOffersTab onToast={triggerToast} />
           )}
@@ -710,6 +717,12 @@ export default function AdminDashboard() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Intelligent Jarvis-Style Canvas AI Assistant (Gen) */}
+      <GenAIAssistant onNavigateTab={(tab) => {
+        setActiveTab(tab);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }} />
     </div>
   );
 }

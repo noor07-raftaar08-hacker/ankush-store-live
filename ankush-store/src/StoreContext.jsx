@@ -356,7 +356,55 @@ const defaultStoreSettings = {
       order: 4,
       isActive: true
     }
-  ]
+  ],
+  coinRules: {
+    isEnabled: true,
+    spendPerCoin: 100,
+    coinsEarnedPerSpend: 2,
+    minOrderToEarn: 200
+  },
+  monthlyRankingBars: [
+    {
+      id: 1,
+      title: "Silver Milestone",
+      targetSpend: 2000,
+      rewardCoins: 50,
+      themeName: "Emerald Mint",
+      gradient: "from-emerald-500 via-teal-500 to-green-400",
+      accentBg: "bg-emerald-500",
+      icon: "🥈"
+    },
+    {
+      id: 2,
+      title: "Gold VIP Milestone",
+      targetSpend: 5000,
+      rewardCoins: 150,
+      themeName: "Royal Gold",
+      gradient: "from-amber-500 via-orange-500 to-yellow-400",
+      accentBg: "bg-amber-500",
+      icon: "🥇"
+    },
+    {
+      id: 3,
+      title: "Diamond Royal Milestone",
+      targetSpend: 10000,
+      rewardCoins: 300,
+      themeName: "Cosmic Diamond",
+      gradient: "from-fuchsia-600 via-purple-600 to-indigo-500",
+      accentBg: "bg-fuchsia-600",
+      icon: "💎"
+    }
+  ],
+  deliveryDistanceConfig: {
+    maxRadiusKm: 15,
+    freeDeliveryMinOrder: 1500,
+    slabs: [
+      { id: 1, maxKm: 2, charge: 0, label: "Khorma Local (Under 2 km)" },
+      { id: 2, maxKm: 5, charge: 40, label: "Pratappur Town (2 to 5 km)" },
+      { id: 3, maxKm: 10, charge: 70, label: "Outer Area (5 to 10 km)" },
+      { id: 4, maxKm: 15, charge: 120, label: "Far Suburbs (10 to 15 km)" }
+    ]
+  }
 };
 
 export const StoreContext = createContext();
@@ -1075,24 +1123,40 @@ export function StoreProvider({ children }) {
   const totalPrice = Math.max(0, rawSubtotalPrice - totalProductDiscount);
   const totalMRP = detailedCartItems.reduce((sum, item) => sum + (item.mrp || Math.round(item.price * 1.15)) * item.quantity, 0);
 
-  const isDistanceEligible = customerDistanceKm <= 3.0;
+  const isDistanceEligible = customerDistanceKm <= (storeSettings.deliveryDistanceConfig?.maxRadiusKm || 15.0);
   const isWithinFreeDeliveryRange = customerDistanceKm <= 2.0;
   const isMinOrderMet = totalPrice >= 700;
 
   const deliveryCharge = useMemo(() => {
     if (totalPrice === 0) return 0;
-    if (totalPrice >= 1500 && isWithinFreeDeliveryRange) return 0;
-    return 30;
-  }, [totalPrice, isWithinFreeDeliveryRange]);
+    const freeMin = storeSettings.deliveryDistanceConfig?.freeDeliveryMinOrder || 1500;
+    if (totalPrice >= freeMin && customerDistanceKm <= 2.0) return 0;
+    const slabs = storeSettings.deliveryDistanceConfig?.slabs || [
+      { maxKm: 2, charge: 0 },
+      { maxKm: 5, charge: 40 },
+      { maxKm: 10, charge: 70 },
+      { maxKm: 15, charge: 120 }
+    ];
+    const match = slabs.find(s => customerDistanceKm <= s.maxKm);
+    return match !== undefined ? match.charge : 40;
+  }, [totalPrice, customerDistanceKm, storeSettings.deliveryDistanceConfig]);
 
   const amountNeededForMinOrder = Math.max(0, 700 - totalPrice);
-  const amountNeededForFreeDelivery = Math.max(0, 1500 - totalPrice);
+  const amountNeededForFreeDelivery = Math.max(0, (storeSettings.deliveryDistanceConfig?.freeDeliveryMinOrder || 1500) - totalPrice);
 
   const availableCoins = currentUser ? currentUser.coins : 0;
   const coinsDiscount = (currentUser && useCoins) ? Math.min(availableCoins, Math.floor(totalPrice * 0.5)) : 0;
   const finalAmount = Math.max(0, totalPrice + deliveryCharge - coinsDiscount);
   const totalSavings = (totalMRP - rawSubtotalPrice) + totalProductDiscount + (deliveryCharge === 0 && totalPrice >= 1500 ? 30 : 0) + coinsDiscount;
-  const coinsEarnedOnOrder = currentUser ? Math.floor(finalAmount / 100) * 2 : 0;
+
+  const isCoinEarningActive = storeSettings.coinRules?.isEnabled !== false;
+  const spendPerCoin = Number(storeSettings.coinRules?.spendPerCoin) || 100;
+  const coinsMultiplier = Number(storeSettings.coinRules?.coinsEarnedPerSpend) || 2;
+  const minEarnOrder = Number(storeSettings.coinRules?.minOrderToEarn) || 200;
+
+  const coinsEarnedOnOrder = (currentUser && isCoinEarningActive && finalAmount >= minEarnOrder)
+    ? Math.floor(finalAmount / spendPerCoin) * coinsMultiplier
+    : 0;
 
   const addOrder = async (orderData) => {
     if (!storeSettings.isStoreOpen) {
@@ -1113,7 +1177,9 @@ export function StoreProvider({ children }) {
       totalDiscount: totalProductDiscount,
       distanceKm: customerDistanceKm,
       distanceZoneLabel,
-      isFreeDeliveryApplied: deliveryCharge === 0 && totalPrice >= 1500
+      isFreeDeliveryApplied: deliveryCharge === 0 && totalPrice >= 1500,
+      advancePaid: orderData.paymentMethod === 'cash' ? 0 : finalAmount,
+      balanceDue: orderData.paymentMethod === 'cash' ? finalAmount : 0
     };
 
     try {
@@ -1147,8 +1213,12 @@ export function StoreProvider({ children }) {
     }).join('\n');
 
     const paymentNote = newOrder.paymentMethod === 'cash'
-      ? `💵 Cash on Delivery (₹200 Advance Paid, Balance Due: ₹${Math.max(0, newOrder.finalAmount - 200)})`
+      ? `💵 Cash on Delivery (Pay ₹${newOrder.finalAmount} to delivery agent on arrival)`
       : `📱 UPI Full Payment (₹${newOrder.finalAmount} Paid via QR)`;
+
+    const googleMapsUrl = (orderData.coords && orderData.coords.lat && orderData.coords.lng)
+      ? `https://maps.google.com/?q=${orderData.coords.lat},${orderData.coords.lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(newOrder.customerAddress)}`;
 
     const waText =
       `🏪 *Ankush General Store (${STORE_ADDRESS_TEXT})*\n` +
@@ -1157,7 +1227,8 @@ export function StoreProvider({ children }) {
       `*Customer:* ${newOrder.customerName}\n` +
       `*Phone:* ${newOrder.customerPhone}\n` +
       `*Address:* ${newOrder.customerAddress}\n` +
-      `*Distance:* ${customerDistanceKm} km (${distanceZoneLabel})\n\n` +
+      `*Distance:* ${customerDistanceKm} km (${distanceZoneLabel})\n` +
+      `*Live GPS Route:* ${googleMapsUrl}\n\n` +
       `*Items Ordered:*\n${itemsList}\n\n` +
       `*Product Total:* ₹${rawSubtotalPrice}\n` +
       `${totalProductDiscount > 0 ? `*Offer Discount:* -₹${totalProductDiscount}\n` : ''}` +
@@ -1165,6 +1236,7 @@ export function StoreProvider({ children }) {
       `*Delivery Charge:* ${newOrder.deliveryCharge === 0 ? 'FREE (₹0)' : '₹' + newOrder.deliveryCharge}\n` +
       `${newOrder.coinsUsed > 0 ? `*Loyalty Coins Used:* -₹${newOrder.coinsUsed}\n` : ''}` +
       `*Final Payable Amount:* ₹${newOrder.finalAmount}\n` +
+      `*Payment Mode:* ${paymentNote}`;
       `*Payment Mode:* ${paymentNote}`;
 
     const waLink = `https://api.whatsapp.com/send?phone=${SHOP_WHATSAPP_INTL}&text=${encodeURIComponent(waText)}`;

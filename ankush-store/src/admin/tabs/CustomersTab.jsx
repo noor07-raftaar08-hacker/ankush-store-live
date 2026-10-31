@@ -92,20 +92,50 @@ export default function CustomersTab({ onToast }) {
 
             {/* Send Bonus Coins Widget */}
             <div className="bg-[#0A0E1E]/80 p-3 rounded-xl border border-white/5 space-y-2">
-              <p className="text-[11px] font-bold text-amber-300 uppercase">Award Bonus Coins:</p>
-              <div className="flex gap-1.5">
-                <input
-                  type="number"
-                  placeholder="Coins (e.g. 50)"
-                  value={awardCoinsMap[customer.phone] || ''}
-                  onChange={e => setAwardCoinsMap({ ...awardCoinsMap, [customer.phone]: e.target.value })}
-                  className="w-1/2 px-2.5 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs text-white"
-                />
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold text-amber-300 uppercase">Award Bonus Coins & Message:</p>
+                <div className="flex gap-1 text-xs">
+                  {['🎉', '🎁', '🪙', '👑', '⭐', '🥳'].map(emoji => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => {
+                        const current = awardReasonMap[customer.phone] || '';
+                        setAwardReasonMap({ ...awardReasonMap, [customer.phone]: `${current} ${emoji}`.trim() });
+                      }}
+                      className="hover:scale-125 transition-transform cursor-pointer"
+                      title="Add Emoji"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex gap-1.5">
+                  <input
+                    type="number"
+                    placeholder="Coins (e.g. 50)"
+                    value={awardCoinsMap[customer.phone] || ''}
+                    onChange={e => setAwardCoinsMap({ ...awardCoinsMap, [customer.phone]: e.target.value })}
+                    className="w-1/3 px-2.5 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs text-white"
+                  />
+                  <input
+                    type="text"
+                    placeholder="VIP Message (e.g. 🎉 Diwali Special Bonus!)"
+                    value={awardReasonMap[customer.phone] || ''}
+                    onChange={e => setAwardReasonMap({ ...awardReasonMap, [customer.phone]: e.target.value })}
+                    className="flex-1 px-2.5 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs text-white"
+                  />
+                </div>
+
                 <button
                   onClick={() => handleSendBonusCoins(customer.phone)}
-                  className="flex-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-amber-950 font-black rounded-lg text-xs transition-colors cursor-pointer"
+                  className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-amber-950 font-black rounded-lg text-xs transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
                 >
-                  + Gift Coins
+                  <RealGoldCoinIcon size="sm" />
+                  <span>Send Coins & VIP Notification Message</span>
                 </button>
               </div>
             </div>

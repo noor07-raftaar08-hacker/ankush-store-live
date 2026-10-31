@@ -26,6 +26,8 @@ import FloatingDailyDealsBadge from './components/front/FloatingDailyDealsBadge'
 import FreshFooter from './components/front/FreshFooter';
 import MobileStoreView from './components/front/MobileStoreView';
 import TrackOrderModal from './components/TrackOrderModal';
+import OrderReceiptModal from './components/OrderReceiptModal';
+import GenAIAssistant from './components/GenAIAssistant';
 
 // Shared Icons
 import { ShoppingCart, Check, X } from './components/Icons';
@@ -203,6 +205,7 @@ function CartAndCheckoutModals() {
 
   const [error, setError] = useState('');
   const [detectingGps, setDetectingGps] = useState(false);
+  const [customerCoords, setCustomerCoords] = useState(null);
 
   const canOrder = isMinOrderMet && isDistanceEligible;
   const upiUri = `upi://pay?pa=${SHOP_UPI_ID}&pn=Ankush%20General%20Store&am=${finalAmount}&cu=INR`;
@@ -217,6 +220,7 @@ function CartAndCheckoutModals() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
+        setCustomerCoords({ lat: latitude, lng: longitude });
         const R = 6371;
         const dLat = ((latitude - STORE_COORDS.lat) * Math.PI) / 180;
         const dLon = ((longitude - STORE_COORDS.lng) * Math.PI) / 180;
@@ -225,7 +229,7 @@ function CartAndCheckoutModals() {
           Math.cos((STORE_COORDS.lat * Math.PI) / 180) * Math.cos((latitude * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
         const calcDist = Number((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1));
         setCustomerDistanceKm(calcDist);
-        setDistanceZoneLabel(`GPS Verified (${calcDist} km)`);
+        setDistanceZoneLabel(`GPS Live (${calcDist} km)`);
         setDetectingGps(false);
       },
       () => {
@@ -249,8 +253,9 @@ function CartAndCheckoutModals() {
       coinsEarned: coinsEarnedOnOrder || 0,
       finalAmount,
       paymentMethod,
-      advancePaid: paymentMethod === 'cash' ? 200 : finalAmount,
-      balanceDue: paymentMethod === 'cash' ? Math.max(0, finalAmount - 200) : 0,
+      advancePaid: paymentMethod === 'cash' ? 0 : finalAmount,
+      balanceDue: paymentMethod === 'cash' ? finalAmount : 0,
+      coords: customerCoords,
       customerName,
       customerPhone,
       customerAddress: `${customerAddress} [${distanceZoneLabel}]`
@@ -471,17 +476,17 @@ function CartAndCheckoutModals() {
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('cash')}
-                  className={`p-3 rounded-xl border-2 text-xs font-extrabold cursor-pointer ${
-                    paymentMethod === 'cash' ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200'
+                  className={`p-3 rounded-xl border-2 text-xs font-extrabold cursor-pointer transition-all ${
+                    paymentMethod === 'cash' ? 'border-emerald-600 bg-emerald-50 text-emerald-950 shadow-sm' : 'border-slate-200 text-slate-700'
                   }`}
                 >
-                  💵 Cash on Delivery (₹200 Advance)
+                  💵 Cash on Delivery (Pay on Arrival)
                 </button>
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('upi')}
-                  className={`p-3 rounded-xl border-2 text-xs font-extrabold cursor-pointer ${
-                    paymentMethod === 'upi' ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200'
+                  className={`p-3 rounded-xl border-2 text-xs font-extrabold cursor-pointer transition-all ${
+                    paymentMethod === 'upi' ? 'border-emerald-600 bg-emerald-50 text-emerald-950 shadow-sm' : 'border-slate-200 text-slate-700'
                   }`}
                 >
                   📱 Full UPI QR Scan
@@ -509,38 +514,16 @@ function CartAndCheckoutModals() {
         )}
       </AnimatePresence>
 
-      {/* RECEIPT CONFIRMATION MODAL */}
-      <AnimatePresence>
-        {isReceiptOpen && lastOrder && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm">
-            <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl text-center relative border border-slate-200">
-              <button
-                onClick={() => { clearCart(); setIsReceiptOpen(false); }}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center font-bold text-sm cursor-pointer shadow-xs transition-colors"
-                title="Close"
-              >
-                ✕
-              </button>
-              <div className="text-3xl">🎊 ✅ 🥳</div>
-              <h3 className="text-xl font-extrabold text-slate-900">Order Confirmed!</h3>
-              <p className="text-xs font-bold text-emerald-700">Order ID: #{lastOrder.id}</p>
-              <div className="bg-slate-50 p-3 rounded-2xl text-left text-xs space-y-1 border border-slate-200">
-                <p><b>Customer:</b> {lastOrder.customerName} ({lastOrder.customerPhone})</p>
-                <p><b>Total Paid/Payable:</b> ₹{Number(lastOrder.finalAmount).toFixed(2)}</p>
-              </div>
-              <div className="flex gap-2 pt-1">
-                <button onClick={() => window.print()} className="flex-1 py-2.5 border border-slate-300 rounded-xl font-bold text-xs cursor-pointer hover:bg-slate-50">🖨️ Print Bill</button>
-                <button
-                  onClick={() => { clearCart(); setIsReceiptOpen(false); }}
-                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs cursor-pointer shadow"
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* FULL TAX-INVOICE & ITEMIZED PRINT BILL MODAL */}
+      {isReceiptOpen && lastOrder && (
+        <OrderReceiptModal
+          order={lastOrder}
+          onClose={() => {
+            clearCart();
+            setIsReceiptOpen(false);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -678,6 +661,9 @@ export default function PublicStore() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Intelligent Jarvis-Style Canvas AI Assistant (Gen) */}
+      <GenAIAssistant />
 
     </div>
   );

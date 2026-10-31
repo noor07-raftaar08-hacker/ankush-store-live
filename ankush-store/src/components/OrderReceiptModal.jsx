@@ -182,22 +182,22 @@ export default function OrderReceiptModal({ order, onClose }) {
               <span className="text-emerald-700 text-lg tabular-nums">₹{order.finalAmount}</span>
             </div>
 
-            {/* Cash Advance Split Note */}
+            {/* Cash / UPI Payment Note */}
             {order.paymentMethod === 'cash' ? (
-              <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] space-y-1">
-                <div className="flex justify-between font-bold text-amber-900">
-                  <span>Advance Online Paid:</span>
-                  <span>₹200.00</span>
+              <div className="mt-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] space-y-1">
+                <div className="flex justify-between font-bold text-emerald-900">
+                  <span>Payment Mode:</span>
+                  <span>Cash on Delivery (₹0 Advance)</span>
                 </div>
-                <div className="flex justify-between font-black text-amber-950">
-                  <span>Remaining Cash on Delivery:</span>
-                  <span>₹{Math.max(0, Number(order.finalAmount) - 200).toFixed(0)}</span>
+                <div className="flex justify-between font-black text-emerald-950">
+                  <span>Amount to Pay on Arrival:</span>
+                  <span className="text-emerald-700 font-extrabold text-sm">₹{Number(order.finalAmount).toFixed(0)}</span>
                 </div>
               </div>
             ) : (
               <div className="mt-2 p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 font-bold flex items-center justify-between">
                 <span>Payment Mode: Full UPI QR Payment</span>
-                <span className="text-emerald-700">✓ VERIFIED</span>
+                <span className="text-emerald-700 font-black">✓ VERIFIED</span>
               </div>
             )}
           </div>
