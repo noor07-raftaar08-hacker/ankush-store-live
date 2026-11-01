@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useStore } from '../../StoreContext';
-import { Layers, Plus, Trash2, Image, Search, MapPin } from '../../components/Icons';
+import { Layers, Plus, Trash2, Image, Search, MapPin, Check, Bell } from '../../components/Icons';
 
 export default function BannerOffersTab({ onToast }) {
   const {
@@ -21,6 +21,33 @@ export default function BannerOffersTab({ onToast }) {
   } = useStore();
 
   const [activeSubTab, setActiveSubTab] = useState('categories'); // 'categories' | 'banners' | 'deals' | 'location'
+
+  // Top Announcement / Running Bar State
+  const initialAnn = storeSettings?.announcementBar || {
+    isEnabled: true,
+    headline: 'Fresh Food, Brighter Days!',
+    subtext: 'Free delivery on orders over ₹1,500 in Khorma & Pratappur',
+    icon: '🌿'
+  };
+  const [annEnabled, setAnnEnabled] = useState(initialAnn.isEnabled !== false);
+  const [annHeadline, setAnnHeadline] = useState(initialAnn.headline || 'Fresh Food, Brighter Days!');
+  const [annSubtext, setAnnSubtext] = useState(
+    initialAnn.subtext !== undefined ? initialAnn.subtext : 'Free delivery on orders over ₹1,500 in Khorma & Pratappur'
+  );
+  const [annIcon, setAnnIcon] = useState(initialAnn.icon || '🌿');
+
+  const handleSaveAnnouncement = async () => {
+    await updateStoreSettings({
+      ...storeSettings,
+      announcementBar: {
+        isEnabled: annEnabled,
+        headline: annHeadline.trim(),
+        subtext: annSubtext.trim(),
+        icon: annIcon.trim() || '🌿'
+      }
+    });
+    if (onToast) onToast('Announcement Bar Updated', 'Top running bar settings saved live.');
+  };
 
   // Add Category Form State
   const [newCatName, setNewCatName] = useState('');
@@ -295,6 +322,96 @@ export default function BannerOffersTab({ onToast }) {
       {/* ================= 2. PROMOTIONAL BANNERS ================= */}
       {activeSubTab === 'banners' && (
         <div className="space-y-6">
+          {/* Top Running Bar & Announcement Ticker Studio */}
+          <div className="liquid-glass-panel rounded-[28px] p-6 space-y-4 border border-white/10">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-emerald-400" />
+                  <span>Top Running Bar & Announcement Ticker Studio</span>
+                </h3>
+                <p className="text-xs text-[#A5B4CC] mt-0.5">
+                  Control the top running announcement bar visible to all customers across the website.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAnnEnabled(!annEnabled)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  annEnabled
+                    ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                    : 'bg-white/10 text-slate-400 border border-white/10'
+                }`}
+              >
+                <span>{annEnabled ? '● Running Bar LIVE' : '○ Bar Hidden'}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Emoji / Icon
+                </label>
+                <input
+                  type="text"
+                  value={annIcon}
+                  onChange={(e) => setAnnIcon(e.target.value)}
+                  placeholder="🌿"
+                  className="w-full px-3.5 py-2.5 bg-[#0A0E1E] border border-white/12 rounded-xl text-xs text-white"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Main Headline Text
+                </label>
+                <input
+                  type="text"
+                  value={annHeadline}
+                  onChange={(e) => setAnnHeadline(e.target.value)}
+                  placeholder="Fresh Food, Brighter Days!"
+                  className="w-full px-3.5 py-2.5 bg-[#0A0E1E] border border-white/12 rounded-xl text-xs text-white"
+                />
+              </div>
+
+              <div className="md:col-span-3">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Subtext / Offer Details (Visible on desktop & tablets)
+                </label>
+                <input
+                  type="text"
+                  value={annSubtext}
+                  onChange={(e) => setAnnSubtext(e.target.value)}
+                  placeholder="Free delivery on orders over ₹1,500 in Khorma & Pratappur"
+                  className="w-full px-3.5 py-2.5 bg-[#0A0E1E] border border-white/12 rounded-xl text-xs text-white"
+                />
+              </div>
+            </div>
+
+            {/* Live Preview Strip */}
+            <div className="p-3 rounded-xl bg-[#0b4834] border border-emerald-700/50 flex items-center justify-between text-xs text-white">
+              <div className="flex items-center gap-2 truncate">
+                <span className="text-emerald-300">{annIcon || '🌿'}</span>
+                <span className="font-bold">{annHeadline || 'Headline'}</span>
+                {annSubtext && <span className="text-emerald-200/90 text-[11px]">— {annSubtext}</span>}
+              </div>
+              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-black/40 text-emerald-300 shrink-0">
+                Live Preview
+              </span>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={handleSaveAnnouncement}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-bold text-xs hover:opacity-95 transition-opacity shadow-lg shadow-emerald-500/25 flex items-center gap-2 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>Save Announcement Bar</span>
+              </button>
+            </div>
+          </div>
+
           <BannerEditorCard
             title="1. Main Hero Banner"
             sectionName="Top Hero Card (Custom Graphic or Text Mode)"

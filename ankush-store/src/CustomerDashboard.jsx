@@ -310,11 +310,47 @@ export default function CustomerDashboard() {
       })
       .reduce((sum, o) => sum + (Number(o.finalAmount) || 0), 0);
 
-    const bars = storeSettings?.monthlyRankingBars || {
-      bar1: { name: 'Silver Milestone', targetSpend: 2000, rewardCoins: 50, color: 'emerald' },
-      bar2: { name: 'Gold VIP Milestone', targetSpend: 5000, rewardCoins: 150, color: 'amber' },
-      bar3: { name: 'Diamond Royal Milestone', targetSpend: 10000, rewardCoins: 350, color: 'purple' }
-    };
+    // Normalize monthly ranking bars whether stored as Array or Object
+    const rawBars = storeSettings?.monthlyRankingBars;
+    let b1 = { name: 'Silver Milestone', title: 'Silver Milestone', targetSpend: 2000, rewardCoins: 50, color: 'emerald', icon: '🥈' };
+    let b2 = { name: 'Gold VIP Milestone', title: 'Gold VIP Milestone', targetSpend: 5000, rewardCoins: 150, color: 'amber', icon: '🥇' };
+    let b3 = { name: 'Diamond Royal Milestone', title: 'Diamond Royal Milestone', targetSpend: 10000, rewardCoins: 350, color: 'purple', icon: '💎' };
+
+    if (Array.isArray(rawBars) && rawBars.length >= 3) {
+      b1 = {
+        name: rawBars[0].title || rawBars[0].name || b1.name,
+        title: rawBars[0].title || rawBars[0].name || b1.title,
+        targetSpend: Number(rawBars[0].targetSpend) || 2000,
+        rewardCoins: Number(rawBars[0].rewardCoins) || 50,
+        color: 'emerald',
+        gradient: rawBars[0].gradient,
+        icon: rawBars[0].icon || '🥈'
+      };
+      b2 = {
+        name: rawBars[1].title || rawBars[1].name || b2.name,
+        title: rawBars[1].title || rawBars[1].name || b2.title,
+        targetSpend: Number(rawBars[1].targetSpend) || 5000,
+        rewardCoins: Number(rawBars[1].rewardCoins) || 150,
+        color: 'amber',
+        gradient: rawBars[1].gradient,
+        icon: rawBars[1].icon || '🥇'
+      };
+      b3 = {
+        name: rawBars[2].title || rawBars[2].name || b3.name,
+        title: rawBars[2].title || rawBars[2].name || b3.title,
+        targetSpend: Number(rawBars[2].targetSpend) || 10000,
+        rewardCoins: Number(rawBars[2].rewardCoins) || 350,
+        color: 'purple',
+        gradient: rawBars[2].gradient,
+        icon: rawBars[2].icon || '💎'
+      };
+    } else if (rawBars && typeof rawBars === 'object') {
+      if (rawBars.bar1) b1 = { ...b1, ...rawBars.bar1, name: rawBars.bar1.title || rawBars.bar1.name || b1.name, title: rawBars.bar1.title || rawBars.bar1.name || b1.title, targetSpend: Number(rawBars.bar1.targetSpend) || b1.targetSpend, rewardCoins: Number(rawBars.bar1.rewardCoins) || b1.rewardCoins };
+      if (rawBars.bar2) b2 = { ...b2, ...rawBars.bar2, name: rawBars.bar2.title || rawBars.bar2.name || b2.name, title: rawBars.bar2.title || rawBars.bar2.name || b2.title, targetSpend: Number(rawBars.bar2.targetSpend) || b2.targetSpend, rewardCoins: Number(rawBars.bar2.rewardCoins) || b2.rewardCoins };
+      if (rawBars.bar3) b3 = { ...b3, ...rawBars.bar3, name: rawBars.bar3.title || rawBars.bar3.name || b3.name, title: rawBars.bar3.title || rawBars.bar3.name || b3.title, targetSpend: Number(rawBars.bar3.targetSpend) || b3.targetSpend, rewardCoins: Number(rawBars.bar3.rewardCoins) || b3.rewardCoins };
+    }
+
+    const bars = { bar1: b1, bar2: b2, bar3: b3 };
 
     const target1 = Math.max(1, Number(bars.bar1?.targetSpend) || 2000);
     const target2 = Math.max(target1 + 1, Number(bars.bar2?.targetSpend) || 5000);
@@ -323,47 +359,47 @@ export default function CustomerDashboard() {
     let activeBarIndex = 1;
     let currentTarget = target1;
     let currentReward = Number(bars.bar1?.rewardCoins) || 50;
-    let currentBarName = bars.bar1?.name || 'Silver Milestone';
+    let currentBarName = bars.bar1?.title || bars.bar1?.name || 'Silver Milestone';
     let progressPercent = 0;
     let remainingSpend = 0;
     let barGradient = 'from-emerald-400 via-teal-400 to-emerald-500';
     let barShadow = 'shadow-emerald-500/30';
-    let badgeText = '🥈 Bar 1: Silver';
+    let badgeText = `${bars.bar1?.icon || '🥈'} ${bars.bar1?.title || bars.bar1?.name || 'Silver'}`;
 
     if (thisMonthSpend < target1) {
       activeBarIndex = 1;
       currentTarget = target1;
       currentReward = Number(bars.bar1?.rewardCoins) || 50;
-      currentBarName = bars.bar1?.name || 'Silver Milestone';
+      currentBarName = bars.bar1?.title || bars.bar1?.name || 'Silver Milestone';
       progressPercent = Math.min(100, Math.round((thisMonthSpend / target1) * 100));
       remainingSpend = Math.max(0, target1 - thisMonthSpend);
       barGradient = 'from-emerald-400 via-teal-400 to-emerald-500';
       barShadow = 'shadow-emerald-500/30';
-      badgeText = '🥈 Bar 1: Silver';
+      badgeText = `${bars.bar1?.icon || '🥈'} ${bars.bar1?.title || bars.bar1?.name || 'Silver'}`;
     } else if (thisMonthSpend < target2) {
       activeBarIndex = 2;
       currentTarget = target2;
       currentReward = Number(bars.bar2?.rewardCoins) || 150;
-      currentBarName = bars.bar2?.name || 'Gold VIP Milestone';
+      currentBarName = bars.bar2?.title || bars.bar2?.name || 'Gold VIP Milestone';
       const range = target2 - target1;
       const progressInLevel = thisMonthSpend - target1;
       progressPercent = Math.min(100, Math.round((progressInLevel / range) * 100));
       remainingSpend = Math.max(0, target2 - thisMonthSpend);
       barGradient = 'from-amber-400 via-yellow-400 to-orange-500';
       barShadow = 'shadow-amber-500/40';
-      badgeText = '🥇 Bar 2: Gold VIP';
+      badgeText = `${bars.bar2?.icon || '🥇'} ${bars.bar2?.title || bars.bar2?.name || 'Gold VIP'}`;
     } else {
       activeBarIndex = 3;
       currentTarget = target3;
       currentReward = Number(bars.bar3?.rewardCoins) || 350;
-      currentBarName = bars.bar3?.name || 'Diamond Royal Milestone';
+      currentBarName = bars.bar3?.title || bars.bar3?.name || 'Diamond Royal Milestone';
       const range = Math.max(1000, target3 - target2);
       const progressInLevel = thisMonthSpend - target2;
       progressPercent = Math.min(100, Math.round((progressInLevel / range) * 100));
       remainingSpend = Math.max(0, target3 - thisMonthSpend);
       barGradient = 'from-fuchsia-500 via-purple-500 to-indigo-500';
       barShadow = 'shadow-purple-500/40';
-      badgeText = '💎 Bar 3: Diamond Royal';
+      badgeText = `${bars.bar3?.icon || '💎'} ${bars.bar3?.title || bars.bar3?.name || 'Diamond Royal'}`;
     }
 
     return {
@@ -1053,7 +1089,7 @@ export default function CustomerDashboard() {
                       : 'bg-black/30 border-white/10 opacity-60'
                   }`}>
                     <div className="text-xs font-extrabold text-emerald-300 flex items-center justify-center gap-1">
-                      <span>🥈 Bar 1</span>
+                      <span>{monthlyRankingData.bars.bar1?.icon || '🥈'} {monthlyRankingData.bars.bar1?.title || monthlyRankingData.bars.bar1?.name || 'Bar 1'}</span>
                       {monthlyRankingData.activeBarIndex > 1 && <span className="text-emerald-400">✓</span>}
                     </div>
                     <div className="text-xs font-black text-white mt-0.5">₹{monthlyRankingData.target1}</div>
@@ -1069,7 +1105,7 @@ export default function CustomerDashboard() {
                       : 'bg-black/30 border-white/10 opacity-60'
                   }`}>
                     <div className="text-xs font-extrabold text-amber-300 flex items-center justify-center gap-1">
-                      <span>🥇 Bar 2</span>
+                      <span>{monthlyRankingData.bars.bar2?.icon || '🥇'} {monthlyRankingData.bars.bar2?.title || monthlyRankingData.bars.bar2?.name || 'Bar 2'}</span>
                       {monthlyRankingData.activeBarIndex > 2 && <span className="text-amber-400">✓</span>}
                     </div>
                     <div className="text-xs font-black text-white mt-0.5">₹{monthlyRankingData.target2}</div>
@@ -1083,7 +1119,7 @@ export default function CustomerDashboard() {
                       : 'bg-black/30 border-white/10 opacity-60'
                   }`}>
                     <div className="text-xs font-extrabold text-purple-300 flex items-center justify-center gap-1">
-                      <span>💎 Bar 3</span>
+                      <span>{monthlyRankingData.bars.bar3?.icon || '💎'} {monthlyRankingData.bars.bar3?.title || monthlyRankingData.bars.bar3?.name || 'Bar 3'}</span>
                       {monthlyRankingData.thisMonthSpend >= monthlyRankingData.target3 && <span className="text-purple-400">✓ Max</span>}
                     </div>
                     <div className="text-xs font-black text-white mt-0.5">₹{monthlyRankingData.target3}</div>

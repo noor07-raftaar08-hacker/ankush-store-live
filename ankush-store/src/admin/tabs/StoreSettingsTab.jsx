@@ -27,6 +27,11 @@ export default function StoreSettingsTab({ activeSubView = 'logo-management', on
   const [storeAddressInput, setStoreAddressInput] = useState(storeSettings.storeAddress || STORE_ADDRESS_TEXT);
   const [mapLocationUrlInput, setMapLocationUrlInput] = useState(storeSettings.mapLocationUrl || 'https://www.google.com/maps/search/?api=1&query=23.4865,83.2085');
 
+  // Direct Contacts & UPI State
+  const [whatsappHelpline, setWhatsappHelpline] = useState(storeSettings.whatsappNumber || SHOP_WHATSAPP_NUMBER);
+  const [callingPhone, setCallingPhone] = useState(storeSettings.callingNumber || SHOP_WHATSAPP_NUMBER);
+  const [merchantUpi, setMerchantUpi] = useState(storeSettings.merchantUpiId || '8817425506@axl');
+
   // 3D Carousel Studio State
   const [carouselList, setCarouselList] = useState(storeSettings.carouselImages || []);
   const [newSlideUrl, setNewSlideUrl] = useState('');
@@ -318,10 +323,75 @@ export default function StoreSettingsTab({ activeSubView = 'logo-management', on
             </GlassButton>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2 text-xs">
-            <p className="text-slate-300"><b>Primary WhatsApp Helpline:</b> +{SHOP_WHATSAPP_INTL}</p>
-            <p className="text-slate-300"><b>Direct Phone Calling:</b> {SHOP_WHATSAPP_NUMBER}</p>
-            <p className="text-slate-300"><b>UPI Merchant VPA:</b> 8817425506@axl</p>
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-4 text-xs">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <span>💳</span>
+              <span>Helpline Numbers & Merchant UPI VPA</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">
+                  💬 Primary WhatsApp Helpline (10 Digits)
+                </label>
+                <div className="flex">
+                  <span className="px-3 py-2.5 bg-white/5 border border-r-0 border-white/12 rounded-l-xl text-slate-400 font-mono text-xs flex items-center">
+                    +91
+                  </span>
+                  <input
+                    type="text"
+                    value={whatsappHelpline}
+                    onChange={e => setWhatsappHelpline(e.target.value)}
+                    placeholder="8817425506"
+                    className="w-full px-3.5 py-2.5 bg-[#0A0E1E] border border-white/12 rounded-r-xl text-white text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">
+                  📞 Direct Phone Calling Number
+                </label>
+                <input
+                  type="text"
+                  value={callingPhone}
+                  onChange={e => setCallingPhone(e.target.value)}
+                  placeholder="8817425506"
+                  className="w-full px-3.5 py-2.5 bg-[#0A0E1E] border border-white/12 rounded-xl text-white text-xs font-mono"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-slate-300 font-bold mb-1">
+                  🏦 UPI Merchant VPA ID (For Instant QR Code & Links)
+                </label>
+                <input
+                  type="text"
+                  value={merchantUpi}
+                  onChange={e => setMerchantUpi(e.target.value)}
+                  placeholder="8817425506@axl"
+                  className="w-full px-3.5 py-2.5 bg-[#0A0E1E] border border-white/12 rounded-xl text-white text-xs font-mono"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Customer jab UPI / QR Code se payment karenge, payment seedhe iss UPI VPA ID par credit hoga.
+                </p>
+              </div>
+            </div>
+
+            <GlassButton
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                updateStoreSettings({
+                  whatsappNumber: whatsappHelpline.trim(),
+                  callingNumber: callingPhone.trim(),
+                  merchantUpiId: merchantUpi.trim()
+                });
+                if (onToast) onToast('Helplines & UPI Saved', 'WhatsApp helpline and UPI VPA ID updated live across the entire store.');
+              }}
+            >
+              Save Contacts & UPI Details
+            </GlassButton>
           </div>
           <p className="text-xs text-[#A5B4CC]">
             Ye saare contacts aapki poori website (Header, Footer, WhatsApp Direct Checkout aur PDF Bills) par verified connect hain.

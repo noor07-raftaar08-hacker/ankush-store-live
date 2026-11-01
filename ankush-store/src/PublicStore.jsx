@@ -223,7 +223,8 @@ function CartAndCheckoutModals() {
   const [customerCoords, setCustomerCoords] = useState(null);
 
   const canOrder = isMinOrderMet && (customerDistanceKm !== null ? isDistanceEligible : true);
-  const upiUri = `upi://pay?pa=${SHOP_UPI_ID}&pn=Ankush%20General%20Store&am=${finalAmount}&cu=INR`;
+  const activeMerchantUpi = storeSettings?.merchantUpiId || SHOP_UPI_ID;
+  const upiUri = `upi://pay?pa=${activeMerchantUpi}&pn=Ankush%20General%20Store&am=${finalAmount}&cu=INR`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUri)}`;
 
   const handleDetectLocationDistance = () => {
@@ -617,7 +618,7 @@ function CartAndCheckoutModals() {
               {paymentMethod === 'upi' && (
                 <div className="text-center bg-blue-50 p-3 rounded-2xl border border-blue-200">
                   <img src={qrImageUrl} alt="UPI QR" className="w-36 h-36 mx-auto rounded-xl bg-white p-2" />
-                  <p className="text-[11px] font-bold text-blue-900 mt-1">Scan to Pay ₹{finalAmount.toFixed(2)} ({SHOP_UPI_ID})</p>
+                  <p className="text-[11px] font-bold text-blue-900 mt-1">Scan to Pay ₹{finalAmount.toFixed(2)} ({activeMerchantUpi})</p>
                 </div>
               )}
 

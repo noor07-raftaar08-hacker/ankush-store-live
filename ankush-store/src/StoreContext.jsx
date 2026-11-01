@@ -1049,19 +1049,24 @@ export function StoreProvider({ children }) {
     if (!API_BASE_URL) return;
     try {
       const token = localStorage.getItem('ankush_admin_token');
-      const queryParam = currentUser?.phone ? `?phone=${encodeURIComponent(currentUser.phone)}` : '';
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
-      const res = await fetch(`${API_BASE_URL}/api/orders${queryParam}`, { headers });
+      // Always fetch complete orders list so Admin has master overview & CustomerDashboard isolates via myOrders
+      const res = await fetch(`${API_BASE_URL}/api/orders`, { headers });
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         setOrders(data);
         localStorage.setItem('ankush_orders', JSON.stringify(data));
+      } else if (Array.isArray(data)) {
+        // If remote returned an empty array, only set empty if we don't have valid orders in cache
+        setOrders(prev => (prev && prev.length > 0 ? prev : []));
       } else {
         console.warn('API returned non-array orders:', data);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Network issue fetching orders:', e);
+    }
   };
 
   useEffect(() => {
@@ -1089,7 +1094,7 @@ export function StoreProvider({ children }) {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isAdminAuth, currentUser?.phone]);
+  }, [isAdminAuth]);
 
   // Offers State
   const [offers, setOffers] = useState(() => {
