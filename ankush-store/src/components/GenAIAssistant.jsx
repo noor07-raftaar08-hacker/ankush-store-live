@@ -49,7 +49,15 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     activeOffers = [],
     orders = [],
     customers = [],
-    storeSettings = {}
+    storeSettings = {},
+    todaySales = 0,
+    todayOrdersCount = 0,
+    yesterdaySales = 0,
+    yesterdayOrdersCount = 0,
+    executeAiPriceUpdate,
+    executeAiStockStatus,
+    executeAiStoreStatus,
+    confirmDelivery
   } = useStore();
 
   const canvasRef = useRef(null);
@@ -63,6 +71,13 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
   const [bubble, setBubble] = useState({ title: '', text: '', show: false, action: null });
   const [isListening, setIsListening] = useState(false);
   const [isConvo, setIsConvo] = useState(false);
+
+  // Two-Step Confirmation State
+  const [pendingAction, setPendingAction] = useState(null);
+  const pendingActionRef = useRef(null);
+  const isConversationActiveRef = useRef(false);
+  const silenceTimerRef = useRef(null);
+  const speechBufferRef = useRef('');
 
   // Gemini API Key State
   // Persistent API Connection & Memory States
@@ -141,6 +156,7 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
   });
   const dragRef = useRef(null);
   const recognitionRef = useRef(null);
+  const startListeningRef = useRef(null);
   const fadeTimeoutRef = useRef(null);
 
   // Set Mood
@@ -310,6 +326,14 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     u.onend = () => {
       stateRef.current.speaking = false;
       levelRef.current = 0;
+      // Continuous hands-free conversation loop: automatically restart listening after AI finishes speaking
+      if (isConversationActiveRef.current && startListeningRef.current) {
+        setTimeout(() => {
+          if (isConversationActiveRef.current && !stateRef.current.speaking) {
+            try { startListeningRef.current(); } catch (e) {}
+          }
+        }, 500);
+      }
     };
     u.onerror = () => {
       stateRef.current.speaking = false;
@@ -333,8 +357,11 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     const totalRev = safeOrders.reduce((s, o) => s + (Number(o?.finalAmount) || 0), 0);
     const pendingOrdersList = safeOrders.filter(o => o && (o.status === 'pending' || !o.status));
     const deliveredOrdersList = safeOrders.filter(o => o && o.status === 'delivered');
-    const outOfStockList = safeProducts.filter(p => p && (p.stockStatus === 'Out of Stock' || Number(p.stock) <= 0));
-    const lowStockList = safeProducts.filter(p => p && Number(p.stock) > 0 && Number(p.stock) <= 5);
+    const outOfStockList = safeProducts.filter(p => p && (p.stockStatus === 'Out of Stock' || Number(p.stock_quantity ?? p.stock) <= 0));
+    const lowStockList = safeProducts.filter(p => {
+      const q = Number(p.stock_quantity ?? p.stock);
+      return q > 0 && q <= 2;
+    });
 
     // Item sold frequency
     const itemSoldCount = {};
@@ -352,29 +379,40 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     const upiOrders = safeOrders.filter(o => o && o.paymentMethod === 'upi').length;
     const cashOrders = safeOrders.filter(o => o && o.paymentMethod === 'cash').length;
 
+    // Delivery Slabs summary
+    const deliverySlabsStr = (storeSettings?.deliverySlabs || [])
+      .map(s => `${s.km}km: ₹${s.charge} (Free above ₹${s.freeAbove || 1500})`)
+      .join(', ');
+
     return {
       storeName: storeSettings?.storeName || 'Ankush General Store',
       storeAddress: storeSettings?.storeAddress || 'Khorma, Pratappur',
       totalOrders: safeOrders.length,
       totalRevenue: totalRev,
+      todayRevenue: todaySales,
+      todayOrdersCount: todayOrdersCount,
+      yesterdayRevenue: yesterdaySales,
+      yesterdayOrdersCount: yesterdayOrdersCount,
       avgOrderValue: safeOrders.length ? Math.round(totalRev / safeOrders.length) : 0,
       pendingOrdersCount: pendingOrdersList.length,
-      pendingOrdersSample: pendingOrdersList.slice(0, 3).map(o => `#${o?.id || o?.orderId || 'ORD'} (${o?.customerName || 'Grahak'}: ₹${o?.finalAmount || 0})`),
+      pendingOrdersSample: pendingOrdersList.slice(0, 5).map(o => `#${o?.id || o?.orderId || 'ORD'} (${o?.customerName || 'Grahak'}, ${o?.customerAddress ? o.customerAddress.split(',')[0] : ''}: ₹${o?.finalAmount || 0})`),
       deliveredOrdersCount: deliveredOrdersList.length,
       totalProductsCount: safeProducts.length,
       topSoldItems: topSoldItems.length ? topSoldItems : ['Sprite', 'Fanta', 'Basmati Rice', 'Mustard Oil'],
       outOfStockCount: outOfStockList.length,
       outOfStockSample: outOfStockList.map(p => p?.name || 'Saman').slice(0, 8),
       lowStockCount: lowStockList.length,
-      lowStockSample: lowStockList.map(p => `${p?.name || 'Saman'} (${p?.stock || 0} bache)`).slice(0, 8),
+      lowStockSample: lowStockList.map(p => `${p?.name || 'Saman'} (${p?.stock_quantity ?? p?.stock ?? 0} bache)`).slice(0, 8),
       vipCustomersCount: safeCustomers.length,
       upiOrdersCount: upiOrders,
       cashOrdersCount: cashOrders,
       activeOffersCount: safeOffers.length,
       activeOffersSample: safeOffers.map(o => o?.title || 'Offer').slice(0, 5),
-      currentOpenStatus: storeSettings?.isStoreOpen ? 'Dukan Khuli Hai (Open)' : 'Dukan Band Hai (Closed)'
+      currentOpenStatus: storeSettings?.isStoreOpen ? 'Dukan Khuli Hai (Open)' : 'Dukan Band Hai (Closed)',
+      deliverySlabsInfo: deliverySlabsStr || '2km: Free above ₹1500',
+      allProductsSummary: safeProducts.slice(0, 30).map(p => `${p.name}: ₹${p.price}/${p.unit || 'kg'} (Stock: ${p.stock_quantity ?? p.stock ?? 'Available'})`).join('; ')
     };
-  }, [orders, products, customers, storeSettings, activeOffers]);
+  }, [orders, products, customers, storeSettings, activeOffers, todaySales, todayOrdersCount, yesterdaySales, yesterdayOrdersCount]);
 
   // Answer Query using Gemini Multi-Turn or Conversational Brain
   const answerQuery = useCallback(async (q) => {
@@ -388,11 +426,159 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
       levelRef.current = 0;
     }
 
+    const lower = query.toLowerCase();
+
+    // 0. TWO-STEP CONFIRMATION HANDLER (Voice Yes / No)
+    if (pendingActionRef.current) {
+      if (/(haan|yes|kar do|theek hai|sahi hai|approve|confirm|badal do|chalu kar do|band kar do|ok|ha)/i.test(lower)) {
+        const action = pendingActionRef.current;
+        setPendingAction(null);
+        pendingActionRef.current = null;
+        action.execute();
+        return;
+      }
+      if (/(nahi|no|mat karo|cancel|ruko|chhod do|rehne do|na)/i.test(lower)) {
+        const action = pendingActionRef.current;
+        setPendingAction(null);
+        pendingActionRef.current = null;
+        action.cancel();
+        return;
+      }
+    }
+
+    // 1. VOICE CONVERSATION CONTROL (Stop / Silence)
+    if (/(stop|chup|chup raho|chup ho jao|thank you|bye|band karo|shant raho)/i.test(lower)) {
+      isConversationActiveRef.current = false;
+      stopListening();
+      const byeMsg = "Theek hai sir, main chup ho gaya hoon. Jab bhi zaroorat ho awaaz dijiyega!";
+      showBubble("Gen AI Paused", byeMsg);
+      speakText(byeMsg);
+      return;
+    }
+
+    // 2. SENSITIVE ACTIONS: TWO-STEP PERMISSION ENGINE
+    // A. Price Update Intent
+    const isPriceChangeIntent = /(rate|price|kimat|daam).*?(badal|change|kar do|set|kardo)/i.test(lower) ||
+                                /(badal|change|set).*?(rate|price|kimat|daam)/i.test(lower);
+    if (isPriceChangeIntent) {
+      const matchedProd = products.find(p => p && p.name && lower.includes(p.name.toLowerCase())) ||
+                          products.find(p => p && p.name && p.name.toLowerCase().split(' ').some(w => w.length > 3 && lower.includes(w)));
+      const numMatch = query.match(/(?:rate|price|rupaye|rs|₹|\s)(\d{1,5})/i) || query.match(/(\d{1,5})\s*(?:rupaye|rs|kar do|me)/i);
+      const targetPrice = numMatch ? Number(numMatch[1]) : null;
+
+      if (matchedProd && targetPrice) {
+        if (onNavigateTab) onNavigateTab('add-product');
+        const act = {
+          type: 'PRICE_UPDATE',
+          title: 'Rate Badalne Ki Permission',
+          execute: () => {
+            if (executeAiPriceUpdate) executeAiPriceUpdate(matchedProd.id, targetPrice);
+            const msg = `Done sir! ${matchedProd.name} ka rate ₹${targetPrice} update kar diya gaya hai aur store par live ho chuka hai.`;
+            showBubble("Rate Updated", msg);
+            speakText(msg);
+          },
+          cancel: () => {
+            const msg = `Theek hai sir, ${matchedProd.name} ka rate purana ₹${matchedProd.price} hi rakha gaya hai.`;
+            showBubble("Cancelled", msg);
+            speakText(msg);
+          }
+        };
+        setPendingAction(act);
+        pendingActionRef.current = act;
+        const askSpeech = `Sir, kya main ${matchedProd.name} ka price ₹${matchedProd.price} se badal kar ₹${targetPrice} kar doon?`;
+        showBubble("⚠️ Permission Chahiye", `Kya ${matchedProd.name} ka rate ₹${matchedProd.price} se badal kar ₹${targetPrice} kar doon?`);
+        speakText(askSpeech);
+        return;
+      }
+    }
+
+    // B. Store Status (Open / Close) Intent
+    if (/(dukan band kar do|store close kar do|dukan close)/i.test(lower)) {
+      if (onNavigateTab) onNavigateTab('store-status');
+      const act = {
+        type: 'STORE_STATUS',
+        title: 'Dukan Band Karne Ki Permission',
+        execute: () => {
+          if (executeAiStoreStatus) executeAiStoreStatus(false, "Store abhi band hai.");
+          const msg = "Sir, dukan band (Closed) mark kar di gayi hai aur grahako ko notice dikh raha hai.";
+          showBubble("Store Closed", msg);
+          speakText(msg);
+        },
+        cancel: () => {
+          const msg = "Theek hai sir, dukan khuli (Open) hi rakhi gayi hai.";
+          showBubble("Cancelled", msg);
+          speakText(msg);
+        }
+      };
+      setPendingAction(act);
+      pendingActionRef.current = act;
+      const askSpeech = "Sir, kya main dukan ko abhi ke liye CLOSE mark kar doon aur grahako ke liye notice laga doon?";
+      showBubble("⚠️ Permission Chahiye", "Kya dukan ko abhi ke liye CLOSE mark kar doon?");
+      speakText(askSpeech);
+      return;
+    }
+
+    if (/(dukan khol do|store open kar do|dukan chalu kar do)/i.test(lower)) {
+      if (onNavigateTab) onNavigateTab('store-status');
+      const act = {
+        type: 'STORE_STATUS',
+        title: 'Dukan Kholne Ki Permission',
+        execute: () => {
+          if (executeAiStoreStatus) executeAiStoreStatus(true, "");
+          const msg = "Sir, dukan khuli (Open) mark kar di gayi hai aur grahak ab orders place kar sakte hain.";
+          showBubble("Store Open", msg);
+          speakText(msg);
+        },
+        cancel: () => {
+          const msg = "Theek hai sir, status change cancel kar diya gaya.";
+          showBubble("Cancelled", msg);
+          speakText(msg);
+        }
+      };
+      setPendingAction(act);
+      pendingActionRef.current = act;
+      const askSpeech = "Sir, kya main dukan ko OPEN mark kar doon taaki grahak orders kar sakein?";
+      showBubble("⚠️ Permission Chahiye", "Kya dukan ko OPEN mark kar doon?");
+      speakText(askSpeech);
+      return;
+    }
+
+    // C. Order Deliver Intent
+    if (/(order deliver kar do|order complete kar do|deliver mark kar do)/i.test(lower)) {
+      if (onNavigateTab) onNavigateTab('pending');
+      const pendingList = orders.filter(o => o && (o.status === 'pending' || !o.status));
+      if (pendingList.length > 0) {
+        const targetOrder = pendingList[0];
+        const act = {
+          type: 'ORDER_DELIVER',
+          title: 'Order Deliver Permission',
+          execute: () => {
+            if (confirmDelivery) confirmDelivery(targetOrder.id);
+            const msg = `Done sir! Order #${targetOrder.id} (${targetOrder.customerName || 'Grahak'}) ko Delivered mark kar diya gaya hai.`;
+            showBubble("Order Delivered", msg);
+            speakText(msg);
+          },
+          cancel: () => {
+            const msg = `Theek hai sir, Order #${targetOrder.id} pending hi rakha gaya hai.`;
+            showBubble("Cancelled", msg);
+            speakText(msg);
+          }
+        };
+        setPendingAction(act);
+        pendingActionRef.current = act;
+        const village = targetOrder.customerAddress ? targetOrder.customerAddress.split(',')[0].trim() : 'Store';
+        const askSpeech = `Sir, kya main ${village} ke ${targetOrder.customerName || 'Grahak'} ji ka ₹${targetOrder.finalAmount} ka order Deliver mark kar doon?`;
+        showBubble("⚠️ Permission Chahiye", `Kya Order #${targetOrder.id} (${targetOrder.customerName}) ko Deliver mark kar doon?`);
+        speakText(askSpeech);
+        return;
+      }
+    }
+
     stateRef.current.thinking = true;
     setMood('thinking', 8000);
     showBubble("You: " + query, "… Soch raha hoon …");
 
-    // 1. Check Google Gemini API with Multi-Turn Memory
+    // 3. Google Gemini API with Multi-Turn Memory & Deep Snapshot
     if (geminiApiKey) {
       try {
         const systemPrompt = `Aap ho "Gen" (Ankush General Store, Khorma, Pratappur ke AI Co-Pilot aur Smart Business Manager).
@@ -406,16 +592,23 @@ AAPKA ANDAAZ (GEMINI LIVE STYLE):
 DUKAN KA LIVE DATABASE SNAPSHOT RIGHT NOW:
 - Dukan: ${storeSnapshot.storeName} (${storeSnapshot.storeAddress})
 - Dukan Status: ${storeSnapshot.currentOpenStatus}
-- Kul Sales: ₹${storeSnapshot.totalRevenue.toLocaleString('en-IN')} (Kul Orders: ${storeSnapshot.totalOrders}, Average Order: ₹${storeSnapshot.avgOrderValue})
+- AAJ KI LIVE SALE (Today's Sales): ₹${storeSnapshot.todayRevenue.toLocaleString('en-IN')} (Kul Orders: ${storeSnapshot.todayOrdersCount})
+- KAL KI SALE (Yesterday's Sales): ₹${storeSnapshot.yesterdayRevenue.toLocaleString('en-IN')} (Kul Orders: ${storeSnapshot.yesterdayOrdersCount})
+- LIFETIME TOTAL REVENUE: ₹${storeSnapshot.totalRevenue.toLocaleString('en-IN')} (Kul Orders: ${storeSnapshot.totalOrders})
 - Pending Orders: ${storeSnapshot.pendingOrdersCount} (${storeSnapshot.pendingOrdersSample.join(', ') || 'Koi nahi'})
 - Delivered: ${storeSnapshot.deliveredOrdersCount}
 - Top Bikne Wale Saman: ${storeSnapshot.topSoldItems.join(', ')}
 - Out of Stock: ${storeSnapshot.outOfStockCount > 0 ? storeSnapshot.outOfStockSample.join(', ') : 'Sabhi saman available hai'}
-- Low Stock (<5): ${storeSnapshot.lowStockCount > 0 ? storeSnapshot.lowStockSample.join(', ') : 'Sabhi products full hain'}
+- Low Stock (<2): ${storeSnapshot.lowStockCount > 0 ? storeSnapshot.lowStockSample.join(', ') : 'Sabhi products full hain'}
 - VIP Customers: ${storeSnapshot.vipCustomersCount} (UPI: ${storeSnapshot.upiOrdersCount}, Cash: ${storeSnapshot.cashOrdersCount})
+- Delivery Rules: ${storeSnapshot.deliverySlabsInfo}
+- Store Products Sample: ${storeSnapshot.allProductsSummary}
 
-INSTRUCTIONS:
-1. Agar admin koi bhi sawal puche - dukan ka ho, hisaab ka ho, business advice ka ho, ya aam baat-cheet / mazaak ka ho - sabhi ka smart jawab do!
+CRITICAL RULES:
+1. "AAJ KI SALE" vs "TOTAL SALE":
+   - Agar admin "aaj", "today", "aaj kitna hua", "aaj ki kamai" puche, to HAMESHA AAJ KI SALE (₹${storeSnapshot.todayRevenue}) batao. Total lifetime sale (₹${storeSnapshot.totalRevenue}) ko aaj ki sale KABHI MAT BOLO!
+   - Agar admin "kal", "yesterday" puche, to KAL KI SALE (₹${storeSnapshot.yesterdayRevenue}) batao.
+   - Agar admin "kul kamai", "total sale" puche, tab hi lifetime sale batao.
 2. Agar admin koi tab kholne ko kahe to action token lagao:
    - [[ACTION:NAVIGATE:analytics-hub]] for sales/reports
    - [[ACTION:NAVIGATE:pending]] for pending orders
@@ -470,9 +663,8 @@ INSTRUCTIONS:
       }
     }
 
-    // 2. Autonomous Conversational Intelligence Brain (Zero-Downtime Guarantee)
+    // 4. Autonomous Conversational Intelligence Brain (Zero-Downtime Guarantee)
     stateRef.current.thinking = false;
-    const lower = query.toLowerCase();
     let replyText = '';
 
     // Greetings & Casual Banter
@@ -480,17 +672,33 @@ INSTRUCTIONS:
       replyText = `नमस्ते सर! मैं बिल्कुल मस्त हूँ और आपकी दुकान के सारे डेटा पर नज़र रखे हुए हूँ। बताइए सर, आज दुकान के लिए क्या प्लान है?`;
       setMood('happy', 3000);
     }
-    // Sales & Kamai
-    else if (/(sale|revenue|kamai|bikri|paisa|kolekshan|aaj kitna|kitna kamaya)/i.test(lower)) {
+    // Aaj Ki Sale & Kamai (Today)
+    else if (/(aaj|today|aaj kitna|aaj ka sale|aaj ki kamai|aaj ka hisab|aaj kitne)/i.test(lower)) {
       if (onNavigateTab) onNavigateTab('analytics-hub');
-      replyText = `हाँ बिल्कुल सर! दुकान की कुल कमाई अभी ₹${storeSnapshot.totalRevenue.toLocaleString('en-IN')} हो चुकी है, कुल ${storeSnapshot.totalOrders} ऑर्डर्स में। मैंने स्क्रीन पर Analytics Hub खोल दिया है।`;
+      replyText = storeSnapshot.todayRevenue > 0
+        ? `हाँ बिल्कुल सर! आज दुकान पर अभी तक ₹${storeSnapshot.todayRevenue.toLocaleString('en-IN')} की बिक्री हुई है और ${storeSnapshot.todayOrdersCount} ऑर्डर्स आए हैं!`
+        : `सर जी, आज अभी तक दुकान पर कोई नया ऑर्डर नहीं आया है, आज की बिक्री ₹0 है। पुरानी पेंडिंग ऑर्डर्स को निपटाने पर ध्यान दे सकते हैं!`;
+      setMood('happy', 3500);
+    }
+    // Kal Ki Sale & Kamai (Yesterday)
+    else if (/(kal|yesterday|kal kitna|kal ka sale|kal ki kamai|kal ka hisab)/i.test(lower)) {
+      if (onNavigateTab) onNavigateTab('analytics-hub');
+      replyText = storeSnapshot.yesterdayRevenue > 0
+        ? `सर जी, कल दुकान पर कुल ₹${storeSnapshot.yesterdayRevenue.toLocaleString('en-IN')} की सेल हुई थी और ${storeSnapshot.yesterdayOrdersCount} ऑर्डर्स डिलीवर हुए थे!`
+        : `सर जी, कल दुकान पर कोई नया ऑर्डर डिलीवर नहीं हुआ था।`;
+      setMood('happy', 3500);
+    }
+    // Kul Kamai & Total Revenue (Lifetime)
+    else if (/(total|kul kamai|kul bikri|lifetime|ab tak kitna|revenue|kamai)/i.test(lower)) {
+      if (onNavigateTab) onNavigateTab('analytics-hub');
+      replyText = `सर जी, दुकान की शुरुआत से अब तक कुल कमाई ₹${storeSnapshot.totalRevenue.toLocaleString('en-IN')} हो चुकी है, कुल ${storeSnapshot.totalOrders} ऑर्डर्स में। मैंने स्क्रीन पर Analytics Hub खोल दिया है।`;
       setMood('happy', 3500);
     }
     // Pending Orders
     else if (/(pending|order baaki|kiska order|pending order)/i.test(lower)) {
       if (onNavigateTab) onNavigateTab('pending');
       replyText = storeSnapshot.pendingOrdersCount > 0
-        ? `अरे सर, अभी कुल ${storeSnapshot.pendingOrdersCount} ऑर्डर्स पेंडing हैं कन्फर्मेशन के लिए! मैंने Pending Orders टैब खोल दिया है, तुरंत अप्रूव कर दीजिए।`
+        ? `अरे सर, अभी कुल ${storeSnapshot.pendingOrdersCount} ऑर्डर्स पेंडिंग हैं कन्फर्मेशन के लिए! मैंने Pending Orders टैब खोल दिया है, तुरंत अप्रूव कर दीजिए।`
         : `सर, बहुत बढ़िया! अभी एक भी पेंडिंग ऑर्डर नहीं है, सारे ऑर्डर्स निपटा दिए गए हैं।`;
       setMood('alert', 3500);
     }
@@ -559,6 +767,12 @@ INSTRUCTIONS:
         levelRef.current = 0;
       }
 
+      speechBufferRef.current = '';
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+
       const r = new SR();
       r.lang = 'hi-IN';
       r.interimResults = true;
@@ -594,15 +808,26 @@ INSTRUCTIONS:
           }
         }
 
-        const currentWords = (finalStr || interimStr).trim();
-        if (currentWords) {
-          showBubble("🎙️ Sun raha hoon…", currentWords);
+        if (finalStr) {
+          speechBufferRef.current = (speechBufferRef.current + ' ' + finalStr).trim();
         }
 
-        if (finalStr.trim()) {
-          const finalSpoken = finalStr.trim();
-          answerQuery(finalSpoken);
+        const liveWords = (speechBufferRef.current + ' ' + interimStr).trim();
+        if (liveWords) {
+          showBubble("🎙️ Sun raha hoon…", liveWords);
         }
+
+        // 1.8-second Calm Silence Debounce: do not cut user off mid-sentence
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+        }
+        silenceTimerRef.current = setTimeout(() => {
+          const fullQuery = (speechBufferRef.current || interimStr).trim();
+          speechBufferRef.current = '';
+          if (fullQuery) {
+            answerQuery(fullQuery);
+          }
+        }, 1800);
       };
 
       r.onerror = (e) => {
@@ -611,6 +836,7 @@ INSTRUCTIONS:
           showBubble("Microphone", "माइक की अनुमति blocked है। Browser lock 🔒 icon par jaakar allow karein.");
           setIsListening(false);
           isListeningRef.current = false;
+          isConversationActiveRef.current = false;
         }
       };
 
@@ -634,12 +860,76 @@ INSTRUCTIONS:
 
   const stopListening = useCallback(() => {
     isListeningRef.current = false;
+    isConversationActiveRef.current = false;
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    speechBufferRef.current = '';
     if (recognitionRef.current) {
       try { recognitionRef.current.abort(); } catch (e) {}
     }
     setIsListening(false);
     stateRef.current.listening = false;
   }, []);
+
+  useEffect(() => {
+    startListeningRef.current = startListening;
+  }, [startListening]);
+
+  // 1. Proactive Incoming Order Announcement
+  const prevOrderCountRef = useRef(orders.length);
+  useEffect(() => {
+    if (orders.length > prevOrderCountRef.current && prevOrderCountRef.current > 0) {
+      const newOrder = orders[0];
+      if (newOrder) {
+        playChime();
+        const village = newOrder.customerAddress ? newOrder.customerAddress.split(',')[0].trim() : 'Store';
+        const cust = newOrder.customerName ? `${newOrder.customerName} ji` : 'Grahak ji';
+        const amt = newOrder.finalAmount || 0;
+        const alertMsg = `Sir, ${village} se ${cust} ka ₹${Number(amt).toLocaleString('en-IN')} ka naya order aaya hai!`;
+        showBubble("🔔 Naya Order Aaya!", alertMsg);
+        speakText(alertMsg);
+      }
+    }
+    prevOrderCountRef.current = orders.length;
+  }, [orders, playChime, showBubble, speakText]);
+
+  // 2. Proactive Low Stock Warning (Stock <= 2)
+  const warnedStockIdsRef = useRef(new Set());
+  useEffect(() => {
+    const dangerItems = (products || []).filter(p => {
+      const qty = Number(p?.stock_quantity ?? p?.stock);
+      return qty > 0 && qty <= 2 && !warnedStockIdsRef.current.has(p.id);
+    });
+
+    if (dangerItems.length > 0) {
+      const firstDanger = dangerItems[0];
+      warnedStockIdsRef.current.add(firstDanger.id);
+      const qty = Number(firstDanger.stock_quantity ?? firstDanger.stock);
+      const alertMsg = `Sir dhyan dijiye, ${firstDanger.name} sirf ${qty} packet bache hain, naya stock mangwa lijiye.`;
+      showBubble("⚠️ Low Stock Alert", alertMsg);
+      setTimeout(() => {
+        speakText(alertMsg);
+      }, 1500);
+    }
+  }, [products, showBubble, speakText]);
+
+  // 3. Dynamic Non-Rote Morning Briefing (Once Per Day)
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const lastBriefing = localStorage.getItem('ags_morning_briefing_date');
+    if (lastBriefing !== today) {
+      localStorage.setItem('ags_morning_briefing_date', today);
+      const timer = setTimeout(() => {
+        const pendingCount = (orders || []).filter(o => o && (o.status === 'pending' || !o.status)).length;
+        const brief = `Good morning sir! Kal dukan par ₹${yesterdaySales.toLocaleString('en-IN')} ki sale hui thi, aur abhi ${pendingCount} pending orders baki hain.`;
+        showBubble("☀️ Morning Briefing", brief);
+        speakText(brief);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [yesterdaySales, orders, showBubble, speakText]);
 
   // EXACT CANVAS 3D ORB DRAWING LOOP MATCHING AURA_JARVES.TXT
   useEffect(() => {
@@ -919,7 +1209,14 @@ INSTRUCTIONS:
 
     const handleGlobalUp = () => {
       if (dragRef.current && !dragRef.current.moved) {
-        setIsConsoleOpen(prev => !prev);
+        // Tapping the orb toggles continuous hands-free voice, never opens the giant playground modal!
+        if (isListeningRef.current) {
+          isConversationActiveRef.current = false;
+          stopListening();
+        } else {
+          isConversationActiveRef.current = true;
+          startListening();
+        }
       }
       dragRef.current = null;
       window.removeEventListener('pointermove', handleGlobalMove);
@@ -959,11 +1256,14 @@ INSTRUCTIONS:
         {/* 1-Click Quick Mic Action Trigger next to Orb */}
         <button
           type="button"
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             if (isListening) {
+              isConversationActiveRef.current = false;
               stopListening();
             } else {
+              isConversationActiveRef.current = true;
               startListening();
             }
           }}
@@ -972,9 +1272,23 @@ INSTRUCTIONS:
               ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse ring-4 ring-rose-500/30'
               : 'bg-violet-600/90 hover:bg-violet-500 text-white'
           }`}
-          title={isListening ? 'Click to stop listening' : 'Click to speak to Gen AI'}
+          title={isListening ? 'Click to stop listening' : 'Click to speak to Gen AI (Continuous Hands-Free Mode)'}
         >
-          {isListening ? '⏹️' : '🎙️'}
+          {isListening ? '🔴' : '🎙️'}
+        </button>
+
+        {/* 1-Click Chat/Playground Console Button (Only opens when explicitly tapped) */}
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsConsoleOpen(prev => !prev);
+          }}
+          className="absolute -bottom-1 -left-1 w-7 h-7 rounded-full bg-slate-900/90 border border-white/20 flex items-center justify-center text-[10px] text-slate-300 hover:text-white hover:bg-violet-600 transition-all shadow-md cursor-pointer"
+          title="Open AI Chat / Text Console"
+        >
+          💬
         </button>
       </div>
 
@@ -983,19 +1297,57 @@ INSTRUCTIONS:
         <div
           ref={bubRef}
           style={{
-            left: `${Math.min(window.innerWidth - 290, Math.max(10, posRef.current.x - 170))}px`,
-            top: `${Math.max(10, posRef.current.y - 110)}px`
+            left: `${Math.min(window.innerWidth - 300, Math.max(10, posRef.current.x - 170))}px`,
+            top: `${Math.max(10, posRef.current.y - 120)}px`
           }}
-          className="fixed z-[9999] w-72 max-w-[85vw] max-h-48 overflow-y-auto bg-slate-950/95 text-white border border-[#7c5cff] p-3 rounded-2xl text-xs shadow-[0_8px_30px_rgba(124,92,255,0.35)] space-y-1 backdrop-blur-md"
+          className="fixed z-[9999] w-72 max-w-[85vw] max-h-56 overflow-y-auto bg-slate-950/95 text-white border border-[#7c5cff] p-3 rounded-2xl text-xs shadow-[0_8px_30px_rgba(124,92,255,0.45)] space-y-2 backdrop-blur-md"
         >
-          {bubble.title && (
-            <div className="text-[11px] font-bold text-teal-300">
-              {bubble.title}
-            </div>
-          )}
+          <div className="flex items-center justify-between">
+            {bubble.title && (
+              <div className="text-[11px] font-bold text-teal-300">
+                {bubble.title}
+              </div>
+            )}
+            <button
+              onClick={() => setBubble(b => ({ ...b, show: false }))}
+              className="text-[10px] text-slate-400 hover:text-white px-1 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
           <div className="text-xs text-white leading-relaxed font-medium">
             {bubble.text}
           </div>
+
+          {/* Two-Step Action Confirmation Buttons */}
+          {pendingAction && (
+            <div className="pt-2 flex items-center gap-2 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => {
+                  const act = pendingAction;
+                  setPendingAction(null);
+                  pendingActionRef.current = null;
+                  act.execute();
+                }}
+                className="flex-1 py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg transition-all shadow-md cursor-pointer text-center"
+              >
+                ✔ Haan, Kar Do
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const act = pendingAction;
+                  setPendingAction(null);
+                  pendingActionRef.current = null;
+                  act.cancel();
+                }}
+                className="py-1.5 px-2 bg-rose-600/80 hover:bg-rose-600 text-white font-bold text-[11px] rounded-lg transition-all cursor-pointer text-center"
+              >
+                ✕ Cancel
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -156,6 +156,27 @@ app.post('/api/orders', async (req, res) => {
       ).catch(() => {});
     }
 
+    // Atomically decrement stock and increment soldCount for each ordered item in MongoDB
+    if (Array.isArray(orderData.items) && orderData.items.length > 0) {
+      for (const item of orderData.items) {
+        const qty = Number(item.quantity) || 1;
+        const numId = Number(item.id);
+        if (!isNaN(numId)) {
+          await Product.findOneAndUpdate(
+            { id: numId },
+            {
+              $inc: { 
+                stock_quantity: -qty,
+                soldCount: qty 
+              }
+            }
+          ).catch((e) => {
+            console.warn(`Could not decrement stock for product #${numId}:`, e.message);
+          });
+        }
+      }
+    }
+
     res.status(201).json({ success: true, message: "Order saved successfully!", order: newOrder });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

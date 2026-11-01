@@ -1333,6 +1333,28 @@ export function StoreProvider({ children }) {
     setOrders(updated);
     localStorage.setItem('ankush_orders', JSON.stringify(updated));
 
+    // Automatic Live Stock Deduction on Order Placement
+    if (Array.isArray(newOrder.items) && newOrder.items.length > 0) {
+      setProducts(prevProds => {
+        const nextProds = prevProds.map(prod => {
+          const purchasedItem = newOrder.items.find(it => String(it.id) === String(prod.id));
+          if (!purchasedItem) return prod;
+          const qty = Number(purchasedItem.quantity) || 1;
+          const currentStock = Number(prod.stock_quantity ?? prod.stock) || 0;
+          const updatedStock = Math.max(0, currentStock - qty);
+          return {
+            ...prod,
+            stock_quantity: updatedStock,
+            stock: updatedStock,
+            stockStatus: updatedStock === 0 ? 'Out of Stock' : updatedStock <= 2 ? 'Few Available' : (prod.stockStatus || 'Full Stock'),
+            soldCount: (Number(prod.soldCount) || 0) + qty
+          };
+        });
+        localStorage.setItem('ankush_products', JSON.stringify(nextProds));
+        return nextProds;
+      });
+    }
+
     if (currentUser) {
       const netCoinChange = (orderData.coinsEarned || 0) - (orderData.coinsUsed || 0);
       if (netCoinChange !== 0) {
@@ -1558,8 +1580,76 @@ export function StoreProvider({ children }) {
     });
   };
 
+  // Live Date-Based Sales Calculations
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const yesterdayStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const todayOrders = useMemo(() => {
+    if (!Array.isArray(orders)) return [];
+    return orders.filter(o => {
+      if (!o || !o.orderDate) return false;
+      return String(o.orderDate).slice(0, 10) === todayStr;
+    });
+  }, [orders, todayStr]);
+
+  const todaySales = useMemo(() => {
+    return todayOrders.reduce((sum, o) => sum + (Number(o?.finalAmount) || 0), 0);
+  }, [todayOrders]);
+
+  const yesterdayOrders = useMemo(() => {
+    if (!Array.isArray(orders)) return [];
+    return orders.filter(o => {
+      if (!o || !o.orderDate) return false;
+      return String(o.orderDate).slice(0, 10) === yesterdayStr;
+    });
+  }, [orders, yesterdayStr]);
+
+  const yesterdaySales = useMemo(() => {
+    return yesterdayOrders.reduce((sum, o) => sum + (Number(o?.finalAmount) || 0), 0);
+  }, [yesterdayOrders]);
+
+  // AI Action Execution Handlers
+  const executeAiPriceUpdate = useCallback((productId, newPrice) => {
+    const pId = Number(productId);
+    const numPrice = Number(newPrice);
+    if (isNaN(pId) || isNaN(numPrice)) return false;
+    updateProduct(pId, { price: numPrice });
+    return true;
+  }, [updateProduct]);
+
+  const executeAiStockStatus = useCallback((productId, isOutOfStock) => {
+    const pId = Number(productId);
+    if (isNaN(pId)) return false;
+    updateProduct(pId, {
+      stockStatus: isOutOfStock ? 'Out of Stock' : 'Full Stock',
+      stock_quantity: isOutOfStock ? 0 : 50,
+      stock: isOutOfStock ? 0 : 50
+    });
+    return true;
+  }, [updateProduct]);
+
+  const executeAiStoreStatus = useCallback((isOpen, message) => {
+    updateStoreSettings({
+      isStoreOpen: Boolean(isOpen),
+      ...(message ? { closureMessage: message } : {})
+    });
+    return true;
+  }, [updateStoreSettings]);
+
   return (
     <StoreContext.Provider value={{
+      todayStr, yesterdayStr,
+      todayOrders, todaySales, todayOrdersCount: todayOrders.length,
+      yesterdayOrders, yesterdaySales, yesterdayOrdersCount: yesterdayOrders.length,
+      executeAiPriceUpdate, executeAiStockStatus, executeAiStoreStatus,
       currentView, setCurrentView,
       isAdminAuth, setIsAdminAuth,
       isLoginModalOpen, setIsLoginModalOpen,
