@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useStore, SHOP_WHATSAPP_NUMBER } from '../StoreContext';
+import { useStore, SHOP_WHATSAPP_NUMBER, API_BASE_URL } from '../StoreContext';
 import { Search, X, CheckCircle2, Clock } from './Icons';
 
 export default function TrackOrderModal({ isOpen, onClose }) {
@@ -11,15 +11,25 @@ export default function TrackOrderModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  const handleSearch = (e) => {
+  const handleSearch = async (e) => {
     e.preventDefault();
     const q = query.trim().toLowerCase();
     if (!q) return;
 
-    const found = orders.find(o =>
+    let found = (orders || []).find(o =>
       (o.id && o.id.toLowerCase().includes(q)) ||
       (o.customerPhone && o.customerPhone.includes(q))
     );
+
+    if (!found && API_BASE_URL) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/orders/track?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.order) found = data.order;
+        }
+      } catch (err) {}
+    }
 
     setMatchedOrder(found || null);
     setSearched(true);

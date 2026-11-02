@@ -301,8 +301,8 @@ export default function DailyDeals({ onInspectProduct }) {
                           <span className="absolute top-1 left-1 bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-md">
                             -{discountPct}%
                           </span>
-                          <div className="w-full h-28 bg-white rounded-xl p-2 flex items-center justify-center">
-                            {prod.image_url?.startsWith('http') ? (
+                          <div className="w-full h-28 bg-white rounded-xl p-2 flex items-center justify-center overflow-hidden">
+                            {typeof prod.image_url === 'string' && (prod.image_url.startsWith('http') || prod.image_url.startsWith('data:') || prod.image_url.startsWith('/') || prod.image_url.startsWith('blob:')) ? (
                               <img src={prod.image_url} alt={prod.name} className="w-full h-full object-contain" />
                             ) : (
                               <span className="text-4xl">{prod.image_url || '🛒'}</span>

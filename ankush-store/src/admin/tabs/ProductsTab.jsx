@@ -31,6 +31,7 @@ export default function ProductsTab({ onToast }) {
   const [pkgNameInput, setPkgNameInput] = useState('');
   const [pkgWeightInput, setPkgWeightInput] = useState('');
   const [pkgPriceInput, setPkgPriceInput] = useState('');
+  const [pkgStockQtyInput, setPkgStockQtyInput] = useState('50');
   const [pkgStockInput, setPkgStockInput] = useState('Full Stock');
   const [editingPkgId, setEditingPkgId] = useState(null);
 
@@ -102,6 +103,9 @@ export default function ProductsTab({ onToast }) {
   const handleAddOrUpdatePackage = () => {
     if (!pkgWeightInput.trim() || !pkgPriceInput) return;
     const pkgs = [...(newProduct.packages || [])];
+    const qty = Math.max(0, Number(pkgStockQtyInput) || 0);
+    const status = qty <= 0 ? 'Out of Stock' : qty <= 15 ? 'Few Available' : 'Full Stock';
+
     if (editingPkgId) {
       const idx = pkgs.findIndex(p => p.packageId === editingPkgId);
       if (idx !== -1) {
@@ -110,7 +114,9 @@ export default function ProductsTab({ onToast }) {
           packageName: pkgNameInput.trim() || pkgWeightInput.trim(),
           weight: pkgWeightInput.trim(),
           price: Number(pkgPriceInput),
-          stockStatus: pkgStockInput
+          stock_quantity: qty,
+          stockStatus: status,
+          isAvailable: qty > 0
         };
       }
       setEditingPkgId(null);
@@ -120,14 +126,16 @@ export default function ProductsTab({ onToast }) {
         packageName: pkgNameInput.trim() || `${pkgWeightInput.trim()} Pack`,
         weight: pkgWeightInput.trim(),
         price: Number(pkgPriceInput),
-        stockStatus: pkgStockInput,
-        isAvailable: true
+        stock_quantity: qty,
+        stockStatus: status,
+        isAvailable: qty > 0
       });
     }
     setNewProduct({ ...newProduct, packages: pkgs });
     setPkgNameInput('');
     setPkgWeightInput('');
     setPkgPriceInput('');
+    setPkgStockQtyInput('50');
     setPkgStockInput('Full Stock');
   };
 
@@ -364,17 +372,17 @@ export default function ProductsTab({ onToast }) {
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
               <input
                 type="text"
-                placeholder="Package Name (e.g. Family Pack)"
+                placeholder="Package Name (e.g. 500g Pack)"
                 value={pkgNameInput}
                 onChange={e => setPkgNameInput(e.target.value)}
                 className="px-3 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
               />
               <input
                 type="text"
-                placeholder={`Weight/Size (e.g. 5 ${newProduct.unit})`}
+                placeholder={`Weight/Size (e.g. 500g)`}
                 value={pkgWeightInput}
                 onChange={e => setPkgWeightInput(e.target.value)}
                 className="px-3 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
@@ -385,6 +393,15 @@ export default function ProductsTab({ onToast }) {
                 value={pkgPriceInput}
                 onChange={e => setPkgPriceInput(e.target.value)}
                 className="px-3 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
+              />
+              <input
+                type="number"
+                min="0"
+                placeholder="Stock (Packets)"
+                value={pkgStockQtyInput}
+                onChange={e => setPkgStockQtyInput(e.target.value)}
+                className="px-3 py-2 bg-[#0A0E1E] border border-white/10 rounded-xl text-xs text-white"
+                title="Exact stock count for this package/variant"
               />
               <button
                 type="button"
@@ -400,10 +417,23 @@ export default function ProductsTab({ onToast }) {
               <div className="space-y-1.5 pt-2">
                 {newProduct.packages.map(pkg => (
                   <div key={pkg.packageId} className="flex items-center justify-between bg-[#0A0E1E] px-3.5 py-2 rounded-xl text-xs border border-white/5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-violet-400 font-bold">📦</span>
                       <span>
                         <b>{pkg.packageName || pkg.weight}</b> ({pkg.weight}) — <span className="text-emerald-300 font-bold">₹{pkg.price}</span>
+                      </span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        (Number(pkg.stock_quantity) || 0) <= 0
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                          : (Number(pkg.stock_quantity) || 0) <= 15
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      }`}>
+                        {(Number(pkg.stock_quantity) || 0) <= 0
+                          ? '🔴 Out of Stock'
+                          : (Number(pkg.stock_quantity) || 0) <= 15
+                          ? `⚠️ Few Left (${pkg.stock_quantity})`
+                          : `✓ Stock: ${pkg.stock_quantity}`}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
@@ -414,6 +444,7 @@ export default function ProductsTab({ onToast }) {
                           setPkgNameInput(pkg.packageName || '');
                           setPkgWeightInput(pkg.weight || '');
                           setPkgPriceInput(String(pkg.price || ''));
+                          setPkgStockQtyInput(String(pkg.stock_quantity !== undefined ? pkg.stock_quantity : 50));
                           setPkgStockInput(pkg.stockStatus || 'Full Stock');
                         }}
                         className="text-amber-400 hover:underline cursor-pointer font-medium"

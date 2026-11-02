@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useStore } from '../../StoreContext';
+import { useStore, getISTDateStr } from '../../StoreContext';
 import { Palette, BarChart3, Search, X, Check } from '../../components/Icons';
 
 // --- MATH & MONOTONE HERMITE SPLINE INTERPOLATION (FROM USER'S CODE) ---
@@ -163,7 +163,7 @@ export default function AnalyticsHubTab({ onOpenDesignSystem, onToast }) {
     return safeOrders.map(o => {
       if (!o) return null;
       const d = o.orderDate ? new Date(o.orderDate) : new Date();
-      const dStr = d.toISOString().slice(0, 10);
+      const dStr = getISTDateStr(d);
       const hour = d.getHours();
       const lines = (o.items && o.items.length > 0)
         ? o.items.map(it => {

@@ -15,6 +15,23 @@ export const SHOP_UPI_ID = "8817425506@axl";
 export const STORE_ADDRESS_TEXT = "Khorma, Pratappur, District Surajpur";
 export const STORE_COORDS = { lat: 23.4865, lng: 83.2085 };
 
+// Strict Indian Standard Time (IST - Asia/Kolkata) Date Formatter (YYYY-MM-DD)
+export const getISTDateStr = (dateInput = new Date()) => {
+  try {
+    const d = typeof dateInput === 'string' || typeof dateInput === 'number' ? new Date(dateInput) : dateInput;
+    if (!d || isNaN(d.getTime())) return '';
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(d);
+  } catch (e) {
+    const d = new Date(dateInput);
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  }
+};
+
 export const getApiBaseUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
@@ -114,41 +131,54 @@ export function RealGoldCoinIcon({ size = "md", animateSpin = false }) {
 }
 
 export function createDefaultPackagesForProduct(p) {
-  if (Array.isArray(p.packages) && p.packages.length > 0) return p.packages;
+  const getPkgStatus = (q) => (q <= 0 ? 'Out of Stock' : q <= 15 ? 'Few Available' : 'Full Stock');
+
+  if (Array.isArray(p.packages) && p.packages.length > 0) {
+    return p.packages.map(pk => {
+      const q = pk.stock_quantity !== undefined ? Number(pk.stock_quantity) : (Number(p.stock_quantity) || 50);
+      return {
+        ...pk,
+        stock_quantity: Math.max(0, q),
+        stockStatus: pk.stockStatus || getPkgStatus(q),
+        isAvailable: q > 0
+      };
+    });
+  }
+
   const basePrice = Number(p.price) || 40;
-  const status = p.stockStatus || (p.stock_quantity === 0 ? 'Out of Stock' : p.stock_quantity < 50 ? 'Few Available' : 'Full Stock');
+  const pStock = Number(p.stock_quantity) || 50;
 
   if (p.name === "Surf Excel") {
     return [
-      { packageId: `${p.id}-10rs`, packageName: "₹10 wala packet", weight: "80g", price: 10, stockStatus: "Full Stock", isAvailable: true },
-      { packageId: `${p.id}-20rs`, packageName: "₹20 wala packet", weight: "180g", price: 20, stockStatus: "Full Stock", isAvailable: true },
-      { packageId: `${p.id}-50rs`, packageName: "₹50 wala packet", weight: "400g", price: 50, stockStatus: "Full Stock", isAvailable: true },
-      { packageId: `${p.id}-500g`, packageName: "500 gram wala packet", weight: "500g", price: Math.round(basePrice * 0.5), stockStatus: "Full Stock", isAvailable: true },
-      { packageId: `${p.id}-1kg`, packageName: "1 kg wala packet", weight: "1 kg", price: basePrice, stockStatus: status, isAvailable: true },
-      { packageId: `${p.id}-5kg`, packageName: "5 kg Family Pack", weight: "5 kg", price: Math.round(basePrice * 4.8), stockStatus: "Few Available", isAvailable: true },
+      { packageId: `${p.id}-10rs`, packageName: "₹10 wala packet", weight: "80g", price: 10, stock_quantity: 40, stockStatus: "Full Stock", isAvailable: true },
+      { packageId: `${p.id}-20rs`, packageName: "₹20 wala packet", weight: "180g", price: 20, stock_quantity: 35, stockStatus: "Full Stock", isAvailable: true },
+      { packageId: `${p.id}-50rs`, packageName: "₹50 wala packet", weight: "400g", price: 50, stock_quantity: 25, stockStatus: "Full Stock", isAvailable: true },
+      { packageId: `${p.id}-500g`, packageName: "500 gram wala packet", weight: "500g", price: Math.round(basePrice * 0.5), stock_quantity: 12, stockStatus: "Few Available", isAvailable: true },
+      { packageId: `${p.id}-1kg`, packageName: "1 kg wala packet", weight: "1 kg", price: basePrice, stock_quantity: 30, stockStatus: "Full Stock", isAvailable: true },
+      { packageId: `${p.id}-5kg`, packageName: "5 kg Family Pack", weight: "5 kg", price: Math.round(basePrice * 4.8), stock_quantity: 6, stockStatus: "Few Available", isAvailable: true },
     ];
   }
 
   if (p.unit === "kg") {
     return [
-      { packageId: `${p.id}-250g`, packageName: "1 Pao (250g) Packet", weight: "250g", price: Math.max(5, Math.round(basePrice * 0.25)), stockStatus: "Full Stock", isAvailable: true },
-      { packageId: `${p.id}-500g`, packageName: "Aadha Kg (500g) Packet", weight: "500g", price: Math.max(10, Math.round(basePrice * 0.5)), stockStatus: "Full Stock", isAvailable: true },
-      { packageId: `${p.id}-1kg`, packageName: "1 Kg Full Packet", weight: "1 kg", price: basePrice, stockStatus: status, isAvailable: true },
-      { packageId: `${p.id}-5kg`, packageName: "5 Kg Bulk Pack", weight: "5 kg", price: Math.round(basePrice * 5), stockStatus: status, isAvailable: true },
+      { packageId: `${p.id}-250g`, packageName: "1 Pao (250g) Packet", weight: "250g", price: Math.max(5, Math.round(basePrice * 0.25)), stock_quantity: 40, stockStatus: "Full Stock", isAvailable: true },
+      { packageId: `${p.id}-500g`, packageName: "Aadha Kg (500g) Packet", weight: "500g", price: Math.max(10, Math.round(basePrice * 0.5)), stock_quantity: 35, stockStatus: "Full Stock", isAvailable: true },
+      { packageId: `${p.id}-1kg`, packageName: "1 Kg Full Packet", weight: "1 kg", price: basePrice, stock_quantity: Math.max(10, pStock), stockStatus: getPkgStatus(pStock), isAvailable: pStock > 0 },
+      { packageId: `${p.id}-5kg`, packageName: "5 Kg Bulk Pack", weight: "5 kg", price: Math.round(basePrice * 5), stock_quantity: 10, stockStatus: "Few Available", isAvailable: true },
     ];
   }
 
   if (p.unit === "liter") {
     return [
-      { packageId: `${p.id}-500ml`, packageName: "500 ml (Aadha Liter)", weight: "500ml", price: Math.round(basePrice * 0.5), stockStatus: "Full Stock", isAvailable: true },
-      { packageId: `${p.id}-1l`, packageName: "1 Liter Bottle/Pouch", weight: "1 Liter", price: basePrice, stockStatus: status, isAvailable: true },
-      { packageId: `${p.id}-5l`, packageName: "5 Liter Family Jar", weight: "5 Liter", price: Math.round(basePrice * 4.9), stockStatus: status, isAvailable: true },
+      { packageId: `${p.id}-500ml`, packageName: "500 ml (Aadha Liter)", weight: "500ml", price: Math.round(basePrice * 0.5), stock_quantity: 30, stockStatus: "Full Stock", isAvailable: true },
+      { packageId: `${p.id}-1l`, packageName: "1 Liter Bottle/Pouch", weight: "1 Liter", price: basePrice, stock_quantity: Math.max(10, pStock), stockStatus: getPkgStatus(pStock), isAvailable: pStock > 0 },
+      { packageId: `${p.id}-5l`, packageName: "5 Liter Family Jar", weight: "5 Liter", price: Math.round(basePrice * 4.9), stock_quantity: 8, stockStatus: "Few Available", isAvailable: true },
     ];
   }
 
   return [
-    { packageId: `${p.id}-std`, packageName: `Standard (1 ${p.unit || 'pc'})`, weight: `1 ${p.unit || 'packet'}`, price: basePrice, stockStatus: status, isAvailable: true },
-    { packageId: `${p.id}-pack3`, packageName: `Value Pack of 3 (${p.unit || 'pc'})`, weight: `3 ${p.unit || 'packet'}`, price: Math.round(basePrice * 3), stockStatus: "Full Stock", isAvailable: true },
+    { packageId: `${p.id}-std`, packageName: `Standard (1 ${p.unit || 'pc'})`, weight: `1 ${p.unit || 'packet'}`, price: basePrice, stock_quantity: Math.max(10, pStock), stockStatus: getPkgStatus(pStock), isAvailable: pStock > 0 },
+    { packageId: `${p.id}-pack3`, packageName: `Value Pack of 3 (${p.unit || 'pc'})`, weight: `3 ${p.unit || 'packet'}`, price: Math.round(basePrice * 3), stock_quantity: 20, stockStatus: "Full Stock", isAvailable: true },
   ];
 }
 
@@ -782,27 +812,32 @@ export function StoreProvider({ children }) {
   };
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/customers/sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customers })
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.customers)) {
-          setCustomers(data.customers);
-          localStorage.setItem('ankush_customers', JSON.stringify(data.customers));
-          if (currentUser) {
-            const freshMe = data.customers.find(c => c.phone === currentUser.phone);
-            if (freshMe) {
-              setCurrentUser(freshMe);
-              localStorage.setItem('ankush_current_user', JSON.stringify(freshMe));
-            }
-          }
-        }
+    // Only authenticated admin can fetch master customer directory; individual customers refresh only their own profile
+    const token = localStorage.getItem('ankush_admin_token');
+    if (token) {
+      fetch(`${API_BASE_URL}/api/customers`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       })
-      .catch(() => {});
-  }, []);
+        .then(r => r.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setCustomers(data);
+            localStorage.setItem('ankush_customers', JSON.stringify(data));
+          }
+        })
+        .catch(() => {});
+    } else if (currentUser && currentUser.phone) {
+      fetch(`${API_BASE_URL}/api/customers/${encodeURIComponent(currentUser.phone)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.success && data.user) {
+            setCurrentUser(data.user);
+            localStorage.setItem('ankush_current_user', JSON.stringify(data.user));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isAdminAuth, currentUser?.phone]);
 
   const saveCustomers = (updatedList, updatedCurrent = currentUser) => {
     setCustomers(updatedList);
@@ -1049,10 +1084,26 @@ export function StoreProvider({ children }) {
     if (!API_BASE_URL) return;
     try {
       const token = localStorage.getItem('ankush_admin_token');
-      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const currentUserStr = localStorage.getItem('ankush_current_user');
+      let customerPhone = null;
+      try {
+        if (currentUserStr) customerPhone = JSON.parse(currentUserStr)?.phone;
+      } catch (e) {}
 
-      // Always fetch complete orders list so Admin has master overview & CustomerDashboard isolates via myOrders
-      const res = await fetch(`${API_BASE_URL}/api/orders`, { headers });
+      let fetchUrl = null;
+      let headers = {};
+
+      if (token) {
+        fetchUrl = `${API_BASE_URL}/api/orders`;
+        headers = { 'Authorization': `Bearer ${token}` };
+      } else if (customerPhone) {
+        fetchUrl = `${API_BASE_URL}/api/orders?phone=${encodeURIComponent(customerPhone)}`;
+      } else {
+        // Public guest visitor without active account: no need to fetch protected orders
+        return;
+      }
+
+      const res = await fetch(fetchUrl, { headers });
       if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
@@ -1094,7 +1145,7 @@ export function StoreProvider({ children }) {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isAdminAuth]);
+  }, [isAdminAuth, currentUser?.phone]);
 
   // Offers State
   const [offers, setOffers] = useState(() => {
@@ -1338,21 +1389,51 @@ export function StoreProvider({ children }) {
     setOrders(updated);
     localStorage.setItem('ankush_orders', JSON.stringify(updated));
 
-    // Automatic Live Stock Deduction on Order Placement
+    // Automatic Live Stock Deduction on Order Placement (Product & Package/Variant level)
     if (Array.isArray(newOrder.items) && newOrder.items.length > 0) {
       setProducts(prevProds => {
         const nextProds = prevProds.map(prod => {
-          const purchasedItem = newOrder.items.find(it => String(it.id) === String(prod.id));
-          if (!purchasedItem) return prod;
-          const qty = Number(purchasedItem.quantity) || 1;
+          const purchasedItems = newOrder.items.filter(it => {
+            const rawId = String(it.productId || it.id || '').split('__')[0];
+            return String(prod.id) === rawId;
+          });
+          if (!purchasedItems.length) return prod;
+
+          let totalDeductedForProd = 0;
+          let updatedPackages = Array.isArray(prod.packages) ? [...prod.packages] : [];
+
+          purchasedItems.forEach(purchasedItem => {
+            const qty = Number(purchasedItem.quantity) || 1;
+            totalDeductedForProd += qty;
+
+            if (purchasedItem.packageId && updatedPackages.length > 0) {
+              updatedPackages = updatedPackages.map(pk => {
+                if (pk.packageId === purchasedItem.packageId) {
+                  const currentPkgStock = Number(pk.stock_quantity) || 50;
+                  const newPkgStock = Math.max(0, currentPkgStock - qty);
+                  return {
+                    ...pk,
+                    stock_quantity: newPkgStock,
+                    stockStatus: newPkgStock <= 0 ? 'Out of Stock' : newPkgStock <= 15 ? 'Few Available' : 'Full Stock',
+                    isAvailable: newPkgStock > 0
+                  };
+                }
+                return pk;
+              });
+            }
+          });
+
           const currentStock = Number(prod.stock_quantity ?? prod.stock) || 0;
-          const updatedStock = Math.max(0, currentStock - qty);
+          const updatedStock = Math.max(0, currentStock - totalDeductedForProd);
+          const newStatus = updatedStock <= 0 ? 'Out of Stock' : updatedStock <= 15 ? 'Few Available' : (prod.stockStatus || 'Full Stock');
+
           return {
             ...prod,
             stock_quantity: updatedStock,
             stock: updatedStock,
-            stockStatus: updatedStock === 0 ? 'Out of Stock' : updatedStock <= 2 ? 'Few Available' : (prod.stockStatus || 'Full Stock'),
-            soldCount: (Number(prod.soldCount) || 0) + qty
+            stockStatus: newStatus,
+            packages: updatedPackages,
+            soldCount: (Number(prod.soldCount) || 0) + totalDeductedForProd
           };
         });
         localStorage.setItem('ankush_products', JSON.stringify(nextProds));
@@ -1585,23 +1666,20 @@ export function StoreProvider({ children }) {
     });
   };
 
-  // Live Date-Based Sales Calculations
-  const todayStr = useMemo(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }, []);
+  // Live Date-Based Sales Calculations (Strict Indian Standard Time IST Asia/Kolkata)
+  const todayStr = useMemo(() => getISTDateStr(new Date()), []);
 
   const yesterdayStr = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return getISTDateStr(d);
   }, []);
 
   const todayOrders = useMemo(() => {
     if (!Array.isArray(orders)) return [];
     return orders.filter(o => {
       if (!o || !o.orderDate) return false;
-      return String(o.orderDate).slice(0, 10) === todayStr;
+      return getISTDateStr(o.orderDate) === todayStr;
     });
   }, [orders, todayStr]);
 
@@ -1613,7 +1691,7 @@ export function StoreProvider({ children }) {
     if (!Array.isArray(orders)) return [];
     return orders.filter(o => {
       if (!o || !o.orderDate) return false;
-      return String(o.orderDate).slice(0, 10) === yesterdayStr;
+      return getISTDateStr(o.orderDate) === yesterdayStr;
     });
   }, [orders, yesterdayStr]);
 
@@ -1679,8 +1757,7 @@ export function StoreProvider({ children }) {
       getOrdersByDate: (d) => (Array.isArray(orders) ? orders.filter(o => {
         try {
           if (!o || !o.orderDate) return false;
-          const dt = new Date(o.orderDate);
-          return !isNaN(dt.getTime()) && dt.toISOString().split('T')[0] === d;
+          return getISTDateStr(o.orderDate) === d;
         } catch (e) {
           return false;
         }
@@ -1689,8 +1766,7 @@ export function StoreProvider({ children }) {
       getSalesByDate: (d) => (Array.isArray(orders) ? orders.filter(o => {
         try {
           if (!o || !o.orderDate) return false;
-          const dt = new Date(o.orderDate);
-          return !isNaN(dt.getTime()) && dt.toISOString().split('T')[0] === d;
+          return getISTDateStr(o.orderDate) === d;
         } catch (e) {
           return false;
         }

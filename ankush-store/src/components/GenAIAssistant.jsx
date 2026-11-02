@@ -360,7 +360,22 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     const outOfStockList = safeProducts.filter(p => p && (p.stockStatus === 'Out of Stock' || Number(p.stock_quantity ?? p.stock) <= 0));
     const lowStockList = safeProducts.filter(p => {
       const q = Number(p.stock_quantity ?? p.stock);
-      return q > 0 && q <= 2;
+      return q > 0 && q <= 15;
+    });
+
+    // Package/Variant-Level Stock Intelligence
+    const lowStockPackages = [];
+    const outOfStockPackages = [];
+    safeProducts.forEach(p => {
+      (p?.packages || []).forEach(pk => {
+        const q = Number(pk.stock_quantity);
+        const label = `${p.name} (${pk.packageName || pk.weight})`;
+        if (q <= 0 || pk.stockStatus === 'Out of Stock') {
+          outOfStockPackages.push(label);
+        } else if (q <= 15) {
+          lowStockPackages.push(`${label} - sirf ${q} packet`);
+        }
+      });
     });
 
     // Item sold frequency
@@ -403,6 +418,8 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
       outOfStockSample: outOfStockList.map(p => p?.name || 'Saman').slice(0, 8),
       lowStockCount: lowStockList.length,
       lowStockSample: lowStockList.map(p => `${p?.name || 'Saman'} (${p?.stock_quantity ?? p?.stock ?? 0} bache)`).slice(0, 8),
+      lowStockPackages: lowStockPackages.slice(0, 10),
+      outOfStockPackages: outOfStockPackages.slice(0, 10),
       vipCustomersCount: safeCustomers.length,
       upiOrdersCount: upiOrders,
       cashOrdersCount: cashOrders,
@@ -410,7 +427,10 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
       activeOffersSample: safeOffers.map(o => o?.title || 'Offer').slice(0, 5),
       currentOpenStatus: storeSettings?.isStoreOpen ? 'Dukan Khuli Hai (Open)' : 'Dukan Band Hai (Closed)',
       deliverySlabsInfo: deliverySlabsStr || '2km: Free above ₹1500',
-      allProductsSummary: safeProducts.slice(0, 30).map(p => `${p.name}: ₹${p.price}/${p.unit || 'kg'} (Stock: ${p.stock_quantity ?? p.stock ?? 'Available'})`).join('; ')
+      allProductsSummary: safeProducts.slice(0, 35).map(p => {
+        const pkgs = (p.packages || []).map(pk => `${pk.packageName || pk.weight}: ₹${pk.price} (Stock: ${pk.stock_quantity !== undefined ? pk.stock_quantity : (p.stock_quantity ?? 50)})`).join(', ');
+        return `${p.name} [Overall Stock: ${p.stock_quantity ?? p.stock ?? '50'}]: {${pkgs || 'Standard Pack'}}`;
+      }).join('; ')
     };
   }, [orders, products, customers, storeSettings, activeOffers, todaySales, todayOrdersCount, yesterdaySales, yesterdayOrdersCount]);
 
@@ -582,12 +602,12 @@ export default function GenAIAssistant({ onNavigateTab, activeTab }) {
     if (geminiApiKey) {
       try {
         const systemPrompt = `Aap ho "Gen" (Ankush General Store, Khorma, Pratappur ke AI Co-Pilot aur Smart Business Manager).
-AAPKA ANDAAZ (GEMINI LIVE STYLE):
-- Bilkul "Gemini Live" jaisa bolna hai: Natural Desi, friendly, witty, respectful, aur energetic human partner!
-- Fillers aur expressions use karo jaise: "Haan bilkul sir!", "Arey sir ek second, main dukan ka data dekh kar batata hoon...", "Haha sahi pakde hain sir!", "Ji sir bilkul...", "Aap hukum kijiye sir."
-- 100% natural, sweet aur clear Hindi / Hinglish me baat karo. Shudh kathin Hindi ya faltu English words mat bolo.
-- Hamesha 2-3 line me crisp aur accurate jawab do taaki bolne me bilkul insani lage.
-- Pichhli baatein yaad rakho (Aapka apna memory system hai).
+AAPKA ANDAAZ (SMART, NATURAL & PROFESSIONAL DUKAN CO-PILOT):
+- Bilkul natural, intelligent aur to-the-point baat karo.
+- KABHI BHI har baat par "Ji sir", "Arey sir ek second", ya "Aap hukum kijiye" jaise rata-rata dialogues baar-baar repeat MAT KARO.
+- Baat seedhi aur respectful rakho, jaisa ek samajhdar store manager baat karta hai.
+- Hamesha 1-2 line me crisp, satik aur dukan ke asli data par aadharit jawab do.
+- Har product ke alag-alag weight aur packet (e.g. 500g, 1kg) ka stock live snapshot se dekh kar accurate batao.
 
 DUKAN KA LIVE DATABASE SNAPSHOT RIGHT NOW:
 - Dukan: ${storeSnapshot.storeName} (${storeSnapshot.storeAddress})
@@ -598,18 +618,21 @@ DUKAN KA LIVE DATABASE SNAPSHOT RIGHT NOW:
 - Pending Orders: ${storeSnapshot.pendingOrdersCount} (${storeSnapshot.pendingOrdersSample.join(', ') || 'Koi nahi'})
 - Delivered: ${storeSnapshot.deliveredOrdersCount}
 - Top Bikne Wale Saman: ${storeSnapshot.topSoldItems.join(', ')}
-- Out of Stock: ${storeSnapshot.outOfStockCount > 0 ? storeSnapshot.outOfStockSample.join(', ') : 'Sabhi saman available hai'}
-- Low Stock (<2): ${storeSnapshot.lowStockCount > 0 ? storeSnapshot.lowStockSample.join(', ') : 'Sabhi products full hain'}
+- Out of Stock Products: ${storeSnapshot.outOfStockCount > 0 ? storeSnapshot.outOfStockSample.join(', ') : 'Sabhi products available hain'}
+- Low Stock (<15 bache): ${storeSnapshot.lowStockCount > 0 ? storeSnapshot.lowStockSample.join(', ') : 'Sabhi products full hain'}
+- Low Stock Specific Packets (<=15): ${storeSnapshot.lowStockPackages?.length ? storeSnapshot.lowStockPackages.join(', ') : 'Sabhi packets full stock me hain'}
+- Out of Stock Specific Packets: ${storeSnapshot.outOfStockPackages?.length ? storeSnapshot.outOfStockPackages.join(', ') : 'Koi bhi packet out of stock nahi hai'}
 - VIP Customers: ${storeSnapshot.vipCustomersCount} (UPI: ${storeSnapshot.upiOrdersCount}, Cash: ${storeSnapshot.cashOrdersCount})
 - Delivery Rules: ${storeSnapshot.deliverySlabsInfo}
-- Store Products Sample: ${storeSnapshot.allProductsSummary}
+- Store Products & Packets Live Catalog: ${storeSnapshot.allProductsSummary}
 
 CRITICAL RULES:
 1. "AAJ KI SALE" vs "TOTAL SALE":
    - Agar admin "aaj", "today", "aaj kitna hua", "aaj ki kamai" puche, to HAMESHA AAJ KI SALE (₹${storeSnapshot.todayRevenue}) batao. Total lifetime sale (₹${storeSnapshot.totalRevenue}) ko aaj ki sale KABHI MAT BOLO!
    - Agar admin "kal", "yesterday" puche, to KAL KI SALE (₹${storeSnapshot.yesterdayRevenue}) batao.
    - Agar admin "kul kamai", "total sale" puche, tab hi lifetime sale batao.
-2. Agar admin koi tab kholne ko kahe to action token lagao:
+2. Agar admin kisi product ke packet/size (e.g. 100g, 500g, 1kg) ka stock puche, to snapshot me dekh kar exact packet stock batao.
+3. Agar admin koi tab kholne ko kahe to action token lagao:
    - [[ACTION:NAVIGATE:analytics-hub]] for sales/reports
    - [[ACTION:NAVIGATE:pending]] for pending orders
    - [[ACTION:NAVIGATE:add-product]] for stock/products
@@ -633,7 +656,7 @@ CRITICAL RULES:
             body: JSON.stringify({
               contents: [
                 { role: 'user', parts: [{ text: systemPrompt }] },
-                { role: 'model', parts: [{ text: 'Ji sir! Main Ankush General Store ka live Gen Co-Pilot hoon. Aap hukum kijiye!' }] },
+                { role: 'model', parts: [{ text: 'Main Ankush General Store ka Gen Co-Pilot active hoon. Aap batayein dukan ke baare me kya janna hai.' }] },
                 ...historyParts,
                 { role: 'user', parts: [{ text: query }] }
               ]
@@ -824,7 +847,8 @@ CRITICAL RULES:
         silenceTimerRef.current = setTimeout(() => {
           const fullQuery = (speechBufferRef.current || interimStr).trim();
           speechBufferRef.current = '';
-          if (fullQuery) {
+          // Filter out background ambient noise, single stray letters, breathing, or accidental clicks
+          if (fullQuery && fullQuery.length >= 3 && !/^(hmm|haan|aah|uh|oh|shh|um|ha)$/i.test(fullQuery)) {
             answerQuery(fullQuery);
           }
         }, 1800);

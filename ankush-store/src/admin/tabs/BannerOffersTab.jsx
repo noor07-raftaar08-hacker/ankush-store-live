@@ -556,8 +556,14 @@ export default function BannerOffersTab({ onToast }) {
 
                       return (
                         <tr key={prod.id} className="hover:bg-white/[0.02]">
-                          <td className="p-3 font-bold text-white flex items-center gap-2">
-                            <span>{prod.image_url?.startsWith('http') ? '📦' : prod.image_url}</span>
+                          <td className="p-3 font-bold text-white flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center overflow-hidden shrink-0 border border-white/10">
+                              {typeof prod.image_url === 'string' && (prod.image_url.startsWith('http') || prod.image_url.startsWith('data:') || prod.image_url.startsWith('/') || prod.image_url.startsWith('blob:')) ? (
+                                <img src={prod.image_url} alt={prod.name} className="w-full h-full object-contain" />
+                              ) : (
+                                <span className="text-base">{prod.image_url || '📦'}</span>
+                              )}
+                            </div>
                             <span className="truncate max-w-[180px]">{prod.name}</span>
                           </td>
                           <td className="p-3 text-slate-400">{prod.category}</td>

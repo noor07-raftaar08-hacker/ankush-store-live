@@ -70,6 +70,9 @@ function PackageSelectionModal() {
         isAvailable: true
       }];
   const currentPkg = packages.find(p => p.packageId === selectedPkgId) || packages[0];
+  const currentPkgStock = currentPkg?.stock_quantity !== undefined ? Number(currentPkg.stock_quantity) : 50;
+  const isOutOfStock = currentPkgStock <= 0 || currentPkg?.stockStatus === 'Out of Stock' || currentPkg?.isAvailable === false;
+  const maxAvailable = Math.max(1, currentPkgStock);
 
   const previewCalc = calculateItemOfferDetails(
     { price: currentPkg?.price || product.price, quantity: packetCount, unit: product.unit },
@@ -77,6 +80,7 @@ function PackageSelectionModal() {
   );
 
   const handleConfirmAddToCart = (e) => {
+    if (isOutOfStock) return;
     if (currentPkg) {
       const rect = e?.currentTarget?.getBoundingClientRect();
       if (rect && triggerFlyToCart) {
@@ -140,23 +144,50 @@ function PackageSelectionModal() {
         <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
           {packages.map(pkg => {
             const isSelected = (currentPkg?.packageId === pkg.packageId);
+            const pStock = pkg.stock_quantity !== undefined ? Number(pkg.stock_quantity) : 50;
+            const isPkgSoldOut = pStock <= 0 || pkg.stockStatus === 'Out of Stock' || pkg.isAvailable === false;
+
             return (
               <div
                 key={pkg.packageId}
-                onClick={() => setSelectedPkgId(pkg.packageId)}
+                onClick={() => {
+                  setSelectedPkgId(pkg.packageId);
+                  setPacketCount(1);
+                }}
                 className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
-                  isSelected
+                  isPkgSoldOut
+                    ? 'border-slate-200 bg-slate-50 opacity-60'
+                    : isSelected
                     ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
                     : 'border-slate-200 hover:border-emerald-300'
                 }`}
               >
                 <div>
-                  <span className="font-bold text-xs text-slate-900 block">{pkg.packageName}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-xs text-slate-900">{pkg.packageName}</span>
+                    {isPkgSoldOut && (
+                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">
+                        Sold Out
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[11px] text-slate-500">{pkg.weight}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-sm font-black text-slate-900 block">₹{pkg.price}</span>
-                  <span className="text-[10px] text-emerald-700 font-semibold">{pkg.stockStatus || 'In Stock'}</span>
+                  <span className={`text-[10px] font-bold ${
+                    isPkgSoldOut
+                      ? 'text-rose-600'
+                      : pStock <= 15
+                      ? 'text-amber-700'
+                      : 'text-emerald-700'
+                  }`}>
+                    {isPkgSoldOut
+                      ? '🔴 Out of Stock'
+                      : pStock <= 15
+                      ? `⚠️ Sirf ${pStock} bache!`
+                      : `✓ In Stock (${pStock})`}
+                  </span>
                 </div>
               </div>
             );
@@ -165,18 +196,27 @@ function PackageSelectionModal() {
 
         {/* Quantity Stepper */}
         <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-100">
-          <span className="text-xs font-bold text-slate-700">Number of Packs:</span>
+          <div>
+            <span className="text-xs font-bold text-slate-700 block">Number of Packs:</span>
+            {!isOutOfStock && currentPkgStock <= 15 && (
+              <span className="text-[10px] text-amber-600 font-semibold">
+                Dukan me sirf {currentPkgStock} bache hain
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2 bg-slate-100 rounded-xl p-1">
             <button
+              disabled={isOutOfStock || packetCount <= 1}
               onClick={() => setPacketCount(Math.max(1, packetCount - 1))}
-              className="w-7 h-7 rounded-lg bg-white shadow-xs font-bold text-xs flex items-center justify-center cursor-pointer"
+              className="w-7 h-7 rounded-lg bg-white shadow-xs font-bold text-xs flex items-center justify-center cursor-pointer disabled:opacity-40"
             >
               -
             </button>
             <span className="px-2 font-black text-xs tabular-nums">{packetCount}</span>
             <button
-              onClick={() => setPacketCount(packetCount + 1)}
-              className="w-7 h-7 rounded-lg bg-white shadow-xs font-bold text-xs flex items-center justify-center cursor-pointer"
+              disabled={isOutOfStock || packetCount >= maxAvailable}
+              onClick={() => setPacketCount(Math.min(maxAvailable, packetCount + 1))}
+              className="w-7 h-7 rounded-lg bg-white shadow-xs font-bold text-xs flex items-center justify-center cursor-pointer disabled:opacity-40"
             >
               +
             </button>
@@ -186,16 +226,28 @@ function PackageSelectionModal() {
         {/* Action Button */}
         <div className="pt-4">
           <button
+            id="package-add-btn"
+            disabled={isOutOfStock}
             onClick={handleConfirmAddToCart}
-            className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2"
+            className={`w-full py-3.5 rounded-2xl font-black text-xs shadow-md transition-colors flex items-center justify-center gap-2 ${
+              isOutOfStock
+                ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+            }`}
           >
-            <span>Add to Cart</span>
-            <span>—</span>
-            <span>₹{previewCalc.finalItemTotal}</span>
-            {previewCalc.freeQuantity > 0 && (
-              <span className="bg-amber-400 text-amber-950 text-[10px] px-2 py-0.5 rounded-full font-black">
-                +{previewCalc.freeQuantity} FREE
-              </span>
+            {isOutOfStock ? (
+              <span>🚫 Ye Packet Out of Stock Hai</span>
+            ) : (
+              <>
+                <span>Add to Cart</span>
+                <span>—</span>
+                <span>₹{previewCalc.finalItemTotal}</span>
+                {previewCalc.freeQuantity > 0 && (
+                  <span className="bg-amber-400 text-amber-950 text-[10px] px-2 py-0.5 rounded-full font-black">
+                    +{previewCalc.freeQuantity} FREE
+                  </span>
+                )}
+              </>
             )}
           </button>
         </div>

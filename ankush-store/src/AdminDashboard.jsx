@@ -276,6 +276,7 @@ export default function AdminDashboard() {
 
   const handleLogoutAdmin = () => {
     localStorage.removeItem('ankush_admin_auth');
+    localStorage.removeItem('ankush_admin_token');
     setIsAdminAuth(false);
     setCurrentView('home');
   };

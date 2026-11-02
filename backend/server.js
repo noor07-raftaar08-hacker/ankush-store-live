@@ -55,6 +55,48 @@ function sanitizeCustomer(cust) {
   return obj;
 }
 
+// Security: In-Memory Anti-Brute-Force Rate Limiter
+const failedAttemptsMap = new Map();
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip || req.connection?.remoteAddress || 'unknown';
+}
+
+function checkLoginRateLimit(req, res, next) {
+  const clientIp = getClientIp(req);
+  const now = Date.now();
+  const record = failedAttemptsMap.get(clientIp);
+
+  if (record && record.lockedUntil && now < record.lockedUntil) {
+    const remainingSecs = Math.ceil((record.lockedUntil - now) / 1000);
+    return res.status(429).json({
+      success: false,
+      message: `Security Lock: 5 baar galat koshish ke karan access temporarily block hai. Kripya ${remainingSecs} second baad dobara try karein.`
+    });
+  }
+  next();
+}
+
+function recordFailedAttempt(req) {
+  const clientIp = getClientIp(req);
+  const now = Date.now();
+  const record = failedAttemptsMap.get(clientIp) || { count: 0, lockedUntil: 0 };
+  record.count += 1;
+  if (record.count >= 5) {
+    record.lockedUntil = now + 15 * 60 * 1000; // 15 minutes lockout
+  }
+  failedAttemptsMap.set(clientIp, record);
+}
+
+function resetFailedAttempts(req) {
+  const clientIp = getClientIp(req);
+  failedAttemptsMap.delete(clientIp);
+}
+
 // Health Check
 app.get('/', (req, res) => {
   res.send("Ankush General Store API Server is Live & Running!");
@@ -72,9 +114,10 @@ app.get('/api/health', (req, res) => {
 // 1. ADMIN AUTHENTICATION
 // =========================================================================
 
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', checkLoginRateLimit, (req, res) => {
   const { username, password } = req.body;
   if (username === ADMIN_USER && password === ADMIN_PASS) {
+    resetFailedAttempts(req);
     const token = jwt.sign(
       { role: 'admin', user: username },
       JWT_SECRET,
@@ -82,6 +125,7 @@ app.post('/api/admin/login', (req, res) => {
     );
     return res.json({ success: true, message: "Admin authenticated successfully", token });
   }
+  recordFailedAttempt(req);
   return res.status(401).json({ success: false, message: "Galat Credentials! Sirf shop owner access kar sakte hain." });
 });
 
@@ -156,28 +200,73 @@ app.post('/api/orders', async (req, res) => {
       ).catch(() => {});
     }
 
-    // Atomically decrement stock and increment soldCount for each ordered item in MongoDB
+    // Atomically decrement stock and increment soldCount for each ordered item & package in MongoDB
     if (Array.isArray(orderData.items) && orderData.items.length > 0) {
       for (const item of orderData.items) {
         const qty = Number(item.quantity) || 1;
         const numId = Number(item.id);
+        const pkgId = item.packageId || item.selectedPackage?.id;
         if (!isNaN(numId)) {
-          await Product.findOneAndUpdate(
-            { id: numId },
-            {
-              $inc: { 
-                stock_quantity: -qty,
-                soldCount: qty 
+          try {
+            const prod = await Product.findOne({ id: numId });
+            if (prod) {
+              const currentStock = Number(prod.stock_quantity) || 0;
+              const newTotalStock = Math.max(0, currentStock - qty);
+              prod.stock_quantity = newTotalStock;
+              prod.soldCount = (Number(prod.soldCount) || 0) + qty;
+              prod.stockStatus = newTotalStock <= 0 ? 'Out of Stock' : newTotalStock <= 15 ? 'Few Available' : 'Full Stock';
+
+              // If variant package was selected, decrement package stock atomically
+              if (pkgId && Array.isArray(prod.packages)) {
+                prod.packages = prod.packages.map(p => {
+                  if (String(p.id) === String(pkgId)) {
+                    const currentPkgStock = Number(p.stock_quantity !== undefined ? p.stock_quantity : currentStock);
+                    const newPkgStock = Math.max(0, currentPkgStock - qty);
+                    return {
+                      ...p,
+                      stock_quantity: newPkgStock,
+                      stockStatus: newPkgStock <= 0 ? 'Out of Stock' : newPkgStock <= 15 ? 'Few Available' : 'Full Stock'
+                    };
+                  }
+                  return p;
+                });
               }
+
+              await prod.save();
             }
-          ).catch((e) => {
+          } catch (e) {
             console.warn(`Could not decrement stock for product #${numId}:`, e.message);
-          });
+          }
         }
       }
     }
 
     res.status(201).json({ success: true, message: "Order saved successfully!", order: newOrder });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Dedicated Order Tracking for Customers (By Order ID or Phone)
+app.get('/api/orders/track', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q || q.length < 3) {
+      return res.status(400).json({ success: false, message: "Valid Order ID or Phone number required" });
+    }
+    const order = await Order.findOne({
+      $or: [
+        { id: q },
+        { id: { $regex: new RegExp(`^${q}$`, 'i') } },
+        { orderId: q },
+        { customerPhone: q }
+      ]
+    }).sort({ orderDate: -1 });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+    res.json({ success: true, order });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -193,19 +282,22 @@ app.get('/api/orders', async (req, res) => {
       return res.json(orders);
     }
 
-    // Admin fetching all orders: check token if provided
+    // Admin fetching all orders: verify JWT token
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       try {
-        jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
-        const allOrders = await Order.find().sort({ orderDate: -1 });
-        return res.json(allOrders);
-      } catch (e) {}
+        const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+        if (decoded.role === 'admin') {
+          const allOrders = await Order.find().sort({ orderDate: -1 });
+          return res.json(allOrders);
+        }
+      } catch (e) {
+        return res.status(401).json({ success: false, message: "Invalid admin session" });
+      }
     }
 
-    // Fallback: Return empty array for unauthenticated callers to protect customer data privacy
-    const publicOrders = await Order.find().sort({ orderDate: -1 }).limit(100);
-    res.json(publicOrders);
+    // Block unauthenticated visitors from reading customer order data
+    return res.status(401).json({ success: false, message: "Unauthorized. Admin session or customer phone required." });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -420,8 +512,8 @@ app.post('/api/customers/register', async (req, res) => {
   }
 });
 
-// Customer Login (Supports Bcrypt and auto-migrates legacy plain-text PIN)
-app.post('/api/customers/login', async (req, res) => {
+// Customer Login (Protected with Anti-Brute-Force Rate Limiting & Bcrypt Hashing)
+app.post('/api/customers/login', checkLoginRateLimit, async (req, res) => {
   try {
     const { phone, pin } = req.body;
     const cleanPhone = String(phone || '').trim();
@@ -429,6 +521,7 @@ app.post('/api/customers/login', async (req, res) => {
 
     const user = await Customer.findOne({ phone: cleanPhone });
     if (!user) {
+      recordFailedAttempt(req);
       return res.status(401).json({
         success: false,
         message: "Galat Mobile Number ya 4-Digit PIN!"
@@ -449,20 +542,36 @@ app.post('/api/customers/login', async (req, res) => {
     }
 
     if (!isMatch) {
+      recordFailedAttempt(req);
       return res.status(401).json({
         success: false,
         message: "Galat Mobile Number ya 4-Digit PIN!"
       });
     }
 
+    resetFailedAttempts(req);
     res.json({ success: true, user: sanitizeCustomer(user) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Get All Customers (Sanitized for Admin)
-app.get('/api/customers', async (req, res) => {
+// Single Customer Lookup (for active customer profile refresh)
+app.get('/api/customers/:phone', async (req, res) => {
+  try {
+    const { phone } = req.params;
+    const customer = await Customer.findOne({ phone: String(phone).trim() });
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Customer not found" });
+    }
+    res.json({ success: true, user: sanitizeCustomer(customer) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get All Customers (Sanitized for Admin Only)
+app.get('/api/customers', verifyAdmin, async (req, res) => {
   try {
     const customers = await Customer.find().sort({ joinedAt: -1 });
     res.json(customers.map(c => sanitizeCustomer(c)));
@@ -471,8 +580,8 @@ app.get('/api/customers', async (req, res) => {
   }
 });
 
-// Bulk Sync Customers List
-app.post('/api/customers/sync', async (req, res) => {
+// Bulk Sync Customers List (Admin Only)
+app.post('/api/customers/sync', verifyAdmin, async (req, res) => {
   try {
     const { customers: clientList } = req.body;
     if (Array.isArray(clientList) && clientList.length > 0) {
